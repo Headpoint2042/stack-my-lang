@@ -15,41 +15,44 @@ import Control.Arrow (left)
 -- int z = 1 + 1 * 2;
 -- int z = (a = 1) - (b = 0) - 1; NOT ALLOWED
 -- Still need to check if Array [Expr] all expr are the same type
+
+-- Expr is rhs of =
 data Expr = Const Integer
           | Var String
           | Add Expr Expr
           | Mult Expr Expr
           | Sub Expr Expr
           | Div Expr Expr
+          
           | Condition Condition
+
           | Char Char                  
-          | Concat [Expr]              -- Operation of concatenation of lists
           | String String              -- Just a string "Some random text" 
+        --   | Concat [Expr]              -- Operation of concatenation of lists
           | Array [Expr]               -- create an array with elements [3, 5, 90+13, 24, 15]
-          | Array_Value String [Integer] -- get values of array: y = x[1]
+          | ArrayIndex String Expr -- get values of array: y = x[1]
 
 
-data Boolean = True
-             | False
-
-data Condition = Operation Operator Expr Expr
+data Condition = Comparison Operator Expr Expr
                | And Condition Condition
                | Or Condition Condition
-               | Bool Boolean
                | Not Condition
+               | Boolean Bool
 
 data Operator = Eq | Neq | Gt | Lt | Ge | Le
 
 
 -- data Scope, between the {}
-data Block = Instructions [Instruction]
+type Block = [Statement]
+
+data Program = Program Block
 
 -- data Instruction, each line of code
-data Instruction = Declaration Declaration
-                 | Assignment  Var_Assignment
-                 | If_block    Condition Block
-                 | While_block Condition Block
-                 | Print       
+data Statement = Declaration Declaration
+                 | Assignment  Assignment
+                 | If    Condition Block (Maybe Block)
+                 | While Condition Block
+                 | Print Expr
                  | Fork
                  | Join
                  | Lock String
@@ -63,24 +66,26 @@ data Declaration = Primitive Scope Primitive
 data Scope = Global
            | Local
 
-data Primitive = Int  String Expr
-               | Bool String Expr
-               | Char String Expr
-               | Lock String
+-- If Maybe None then initialize primitive with predefined default value.
+data Primitive = Int  String (Maybe Expr)    -- Can change it instead to be (Maybe Expr)
+               | Bool String (Maybe Expr)
+               | Char String (Maybe Expr)
+               | TLock String
 
--- Array type name [sizes] values
-data Derived = Array Var_Type String [Integer] Expr
-             | String String Expr
+-- Array type name [sizes (must be integers!)] values
+-- If Maybe None then initialize derived with predefined default value.
+data Derived = Array Type String [Integer] (Maybe Expr)
+             | String String (Maybe Expr)
 
-data Var_Type = Int
-              | Bool
-              | Char
-              | String
+data Type = Int
+          | Bool
+          | Char
+          | String
 
 
 -- Variable assignment
-data Var_Assignment = Primitive String Expr             -- Includes cases where x = y, x = y - 3 ...
-                    | Array String [Integer] Expr       -- Important for array value changing at index:  a[1] = 24
+data Assignment = Absolute String Expr             -- Includes cases where x = y, x = y - 3 ...
+                | Partial  String [Expr] Expr       -- Important for array value changing at index:  a[1] = 24
 
 
 num :: Parser Integer
