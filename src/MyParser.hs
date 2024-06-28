@@ -1,12 +1,15 @@
-module MyParser
-    ( parseMyLang
-    ) where
+-- module MyParser
+--     ( MyLang
+--     ) where
 
 import Text.Parsec
 import Text.Parsec.String (Parser)
 import Text.Parsec.Char (anyChar)
 import Text.Parsec.Combinator (many1)
 import Control.Arrow (left)
+
+import Text.ParserCombinators.Parsec.Language
+import qualified Text.ParserCombinators.Parsec.Token as Token
 
 
 -- int x = 1;
@@ -23,23 +26,26 @@ data Expr = Const Integer
           | Mult Expr Expr
           | Sub Expr Expr
           | Div Expr Expr
-          
           | Condition Condition
-
           | Char Char                  
-          | String String              -- Just a string "Some random text" 
+          | StringLiteral String              -- Just a string "Some random text" 
         --   | Concat [Expr]              -- Operation of concatenation of lists
-          | Array [Expr]               -- create an array with elements [3, 5, 90+13, 24, 15]
+          | ArrayLiteral [Expr]               -- create an array with elements [3, 5, 90+13, 24, 15]
           | ArrayIndex String Expr -- get values of array: y = x[1]
 
 
-data Condition = Comparison Operator Expr Expr
+data Condition = Eq Expr Expr
+               | Neq Expr Expr
+               | Gt Expr Expr
+               | Lt Expr Expr
+               | Ge Expr Expr
+               | Le Expr Expr
                | And Condition Condition
                | Or Condition Condition
                | Not Condition
                | Boolean Bool
 
-data Operator = Eq | Neq | Gt | Lt | Ge | Le
+-- data Order = Eq | Neq | Gt | Lt | Ge | Le
 
 
 -- data Scope, between the {}
@@ -49,15 +55,15 @@ data Program = Program Block
 
 -- data Instruction, each line of code
 data Statement = Declaration Declaration
-                 | Assignment  Assignment
-                 | If    Condition Block (Maybe Block)
-                 | While Condition Block
-                 | Print Expr
-                 | Fork
-                 | Join
-                 | Lock String
-                 | Unlock String
-                 | Block Block
+                | Assignment  Assignment
+                | If    Condition Block (Maybe Block)
+                | While Condition Block
+                | Print Expr
+                | Fork
+                | Join
+                | Lock String
+                | Unlock String
+                | Block Block
 
 -- Declaration of variables, helps backend --
 data Declaration = Primitive Scope Primitive
@@ -67,34 +73,205 @@ data Scope = Global
            | Local
 
 -- If Maybe None then initialize primitive with predefined default value.
-data Primitive = Int  String (Maybe Expr)    -- Can change it instead to be (Maybe Expr)
-               | Bool String (Maybe Expr)
-               | Char String (Maybe Expr)
-               | TLock String
+-- Add prefix T to denote Primitive types
+data Primitive = PInt  String (Maybe Expr)    -- Can change it instead to be (Maybe Expr)
+               | PBool String (Maybe Expr)
+               | PChar String (Maybe Expr)
+               | PLock String
 
 -- Array type name [sizes (must be integers!)] values
 -- If Maybe None then initialize derived with predefined default value.
-data Derived = Array Type String [Integer] (Maybe Expr)
+data Derived = Array DerivedType String Integer (Maybe Expr)
              | String String (Maybe Expr)
 
-data Type = Int
-          | Bool
-          | Char
-          | String
+-- add prefix T so that we don't have the same constructors as in Primitive
+data DerivedType = DInt
+                 | DBool
+                 | DChar
+                --  | DString
 
 
 -- Variable assignment
 data Assignment = Absolute String Expr             -- Includes cases where x = y, x = y - 3 ...
-                | Partial  String [Expr] Expr       -- Important for array value changing at index:  a[1] = 24
+                | Partial  String Expr Expr       -- Important for array value changing at index:  a[1] = 24
 
 
-num :: Parser Integer
-num = do
-    n <- many1 digit
-    return (read n)
+languageDef = 
+  emptyDef { Token.commentLine = "//"
+           , Token.identStart = letter
+           , Token.identLetter = alphaNum
+           , Token.reservedNames = 
+              [ "while", "if", "else", "int", "char", "bool", "String", "Lock", "lock", "unlock", "fork", "join", "global", "true", "false"]
+           , Token.reservedOpNames = 
+              [ "-", "+", "*", "/", "&&", "||", "==", "!=", "<", ">", "<=", ">=", "!"]
+           , Token.caseSensitive = True
+  }
 
-parseNumUntilEnd :: String -> Either ParseError Integer
-parseNumUntilEnd = parse (num <* eof) "Todo: filename"
+lexer = Token.makeTokenParser languageDef
 
-parseMyLang s = left show $ parseNumUntilEnd s
+-- Create functions for all types of tokens
+identifier    = Token.identifier lexer
+integer       = Token.integer lexer
+parens        = Token.parens lexer
+braces        = Token.braces lexer
+brackets      = Token.brackets lexer
+symbol        = Token.symbol lexer
+semi          = Token.semi lexer
+dot           = Token.dot lexer
+commaSep      = Token.commaSep lexer
+charLiteral   = Token.charLiteral lexer
+stringLiteral = Token.stringLiteral lexer
+reserved      = Token.reserved lexer
+
+
+program :: Parser Program
+program = Program <$> block <* eof
+
+-- we did not define block as = braces (many statement) because we need to use block for our global scope
+block :: Parser Block
+block = many statement
+
+statement :: Parser Statement
+statement =  try (Declaration <$> (declaration <* semi)) 
+         <|> try (Assignment <$> (assignment <* semi))
+         <|> try (If <$> (reserved "if" *> parens condition) <*> braces block <*> (optionMaybe (reserved "else" *> braces block)))
+         <|> try (While <$> (reserved "while" *> parens condition) <*> braces block)
+         <|> try (Print <$> (reserved "print" *> expr <* semi))
+         <|> try (Fork <$ (reserved "fork" *> semi))
+         <|> try (Join <$ (reserved "join" *> semi))
+         <|> try (Lock <$> (identifier <* (dot *> reserved "lock" *> semi)))
+         <|> try (Unlock <$> (identifier <* (dot *> reserved "unlock" *> semi)))
+         <|> Block <$> braces block
+
+declaration :: Parser Declaration
+declaration =  try (Primitive <$> scope <*> primitive)
+           <|> Derived <$> scope <*> derived
+
+scope :: Parser Scope
+scope =  try (Global <$ (reserved "global"))
+     <|> pure Local
+
+primitive :: Parser Primitive
+primitive =  try (PInt <$> (reserved "int" *> identifier) <*> (optionMaybe (symbol "=" *> expr)))
+         <|> try (PBool <$> (reserved "bool" *> identifier) <*> (optionMaybe (symbol "=" *> expr)))
+         <|> try (PChar <$> (reserved "char" *> identifier) <*> (optionMaybe (symbol "=" *> expr)))
+         <|> PLock <$> (reserved "Lock" *> identifier)
+
+derived :: Parser Derived
+derived =  try (Array <$> derivedType <*> identifier <*> integer <*> (optionMaybe (symbol "=" *> expr)))
+       <|> String <$> (reserved "String" *> identifier) <*> (optionMaybe (symbol "=" *> expr))
+
+derivedType :: Parser DerivedType
+derivedType =  try (DInt <$ reserved "int")
+           <|> try (DBool <$ reserved "bool")
+           <|> DChar <$ reserved "char"
+
+-- name[index] = value
+assignment :: Parser Assignment
+assignment =  try (Partial <$> identifier <*> brackets expr <*> (symbol "=" *> expr))
+          <|> Absolute <$> identifier <*> (symbol "=" *> expr)
+
+fork :: Parser Statement
+fork = Fork <$ (reserved "fork")
+
+join :: Parser Statement
+join = Join <$ (reserved "join")
+
+expr :: Parser Expr
+expr = try parseConst
+   <|> try var
+   <|> try add
+   <|> try mult
+   <|> try sub
+   <|> try parseDiv
+   <|> try exprCond
+   <|> try parseChar
+   <|> try parseString
+   <|> try arrayLiteral
+   <|> arrayIndex
+
+parseConst :: Parser Expr
+parseConst = Const <$> integer
+
+var :: Parser Expr
+var = Var <$> identifier
+
+add :: Parser Expr
+add = Add <$> expr <*> (symbol "+" *> expr)
+
+mult :: Parser Expr
+mult = Mult <$> expr <*> (symbol "*" *> expr)
+
+sub :: Parser Expr
+sub = Sub <$> expr <*> (symbol "-" *> expr)
+
+parseDiv :: Parser Expr
+parseDiv = Div <$> expr <*> (symbol "/" *> expr)
+
+exprCond :: Parser Expr
+exprCond = Condition <$> condition
+
+parseChar :: Parser Expr
+parseChar = Char <$> charLiteral
+
+parseString :: Parser Expr
+parseString = StringLiteral <$> stringLiteral
+
+arrayLiteral :: Parser Expr
+arrayLiteral = ArrayLiteral <$> (brackets (commaSep expr))
+
+arrayIndex :: Parser Expr
+arrayIndex = ArrayIndex <$> identifier <*> brackets expr
+
+condition :: Parser Condition
+condition =  try eq 
+         <|> try neq 
+         <|> try gt 
+         <|> try lt 
+         <|> try ge 
+         <|> try le 
+         <|> try parseAnd 
+         <|> try parseOr 
+         <|> try parseNot 
+         <|> boolean
+
+eq :: Parser Condition
+eq = Eq <$> expr <*> ((symbol "==") *> expr)
+
+neq :: Parser Condition
+neq = Neq <$> expr <*> ((symbol "!=") *> expr)
+
+gt :: Parser Condition
+gt = Gt <$> expr <*> ((symbol ">") *> expr)
+
+lt :: Parser Condition
+lt = Lt <$> expr <*> ((symbol "<") *> expr)
+
+ge :: Parser Condition
+ge = Ge <$> expr <*> ((symbol ">=") *> expr)
+
+le :: Parser Condition
+le = Le <$> expr <*> ((symbol "<=") *> expr)
+
+parseAnd :: Parser Condition
+parseAnd = And <$> condition <*> ((symbol "&&") *> condition)
+
+parseOr :: Parser Condition
+parseOr = Or <$> condition <*> ((symbol "||") *> condition)
+
+parseNot :: Parser Condition
+parseNot = Not <$> ((symbol "!") *> condition)
+
+boolean :: Parser Condition
+boolean = Boolean <$> (try ((reserved "true") *> pure True) <|> (reserved "false" *> pure False))
+
+-- num :: Parser Integer
+-- num = do
+--     n <- many1 digit
+--     return (read n)
+
+-- NumUntilEnd :: String -> Either ParseError Integer
+-- NumUntilEnd =  (num <* eof) "Todo: filename"
+
+-- MyLang s = left show $ NumUntilEnd s
 
