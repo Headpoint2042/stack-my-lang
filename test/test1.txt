@@ -1,0 +1,9 @@
+bool z = (1 == 2);
+
+if ((z == true) && (zero)) {
+    print(1);
+}
+
+while (true) {
+    print("dragos");
+}

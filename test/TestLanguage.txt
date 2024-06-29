@@ -1,8 +1,26 @@
 int n = 0;
 
-int x [12];
+global int x [12];
 
+fork;
+
+Lock l;
 {
 	n = n + 1;
 	print(n);
+	l.lock;
+	l.unlock;
+	join;
+	String s = "Something";
+	if (true == 1+2)
+	{
+		fork;
+	}
+	join;
+	while (false) 
+	{
+		print(n[2]);
+	}
+
+	char c = 's';
 }

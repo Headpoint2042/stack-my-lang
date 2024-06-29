@@ -45,6 +45,7 @@ data Condition = Eq Expr Expr
                | Or Condition Condition
                | Not Condition
                | Boolean Bool
+               | Expr String
                deriving (Show)
 
 -- data Order = Eq | Neq | Gt | Lt | Ge | Le
@@ -57,16 +58,16 @@ data Program = Program Block deriving (Show)
 
 -- data Instruction, each line of code
 data Statement = Declaration Declaration
-                | Assignment  Assignment
-                | If    Condition Block (Maybe Block)
-                | While Condition Block
-                | Print Expr
-                | Fork
-                | Join
-                | Lock String
-                | Unlock String
-                | Block Block
-                deriving (Show)
+               | Assignment  Assignment
+               | If    Condition Block (Maybe Block)
+               | While Condition Block
+               | Print Expr
+               | Fork
+               | Join
+               | Lock String
+               | Unlock String
+               | Block Block
+               deriving (Show)
 
 -- Declaration of variables, helps backend --
 data Declaration = Primitive Scope Primitive
@@ -197,9 +198,9 @@ term = try mult
    <|> factor
 
 factor :: Parser Expr
-factor = arrayLiteral
+factor = try arrayLiteral
      <|> try arrayIndex
-     <|> try boolean
+     <|> try (Condition <$> boolean)
      <|> try (parens exprCond)
      <|> try var
      <|> try parseChar
@@ -232,6 +233,7 @@ exprCond = Condition <$> condition
 parseChar :: Parser Expr
 parseChar = Char <$> charLiteral
 
+-- stringLiteral -> from ParSec
 parseString :: Parser Expr
 parseString = StringLiteral <$> stringLiteral
 
@@ -241,17 +243,24 @@ arrayLiteral = ArrayLiteral <$> (brackets (commaSep expr))
 arrayIndex :: Parser Expr
 arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
-condition :: Parser Condition
-condition =  try eq 
-         <|> try neq 
+conditionExpr :: Parser Condition
+conditionExpr =  try eq 
+         <|> try neq
          <|> try gt 
          <|> try lt 
          <|> try ge 
          <|> try le 
-         <|> try parseAnd 
-         <|> try parseOr 
-         <|> try parseNot 
-         <|> boolean
+         <|> try boolean
+         <|> Expr <$> identifier
+
+
+condition :: Parser Condition
+condition = try parseAnd 
+            <|> try parseOr 
+            <|> try parseNot 
+            <|> conditionExpr
+
+-- var <|> parens condition
 
 eq :: Parser Condition
 eq = Eq <$> (expr <* symbol "==") <*> expr
@@ -272,16 +281,18 @@ le :: Parser Condition
 le = Le <$> (expr <* symbol ">=") <*> expr
 
 parseAnd :: Parser Condition
-parseAnd = And <$> condition <*> ((symbol "&&") *> condition)
+parseAnd = And <$> parens condition <*> ((symbol "&&") *> parens condition)
 
 parseOr :: Parser Condition
-parseOr = Or <$> condition <*> ((symbol "||") *> condition)
+parseOr = Or <$> parens condition <*> ((symbol "||") *> parens condition)
 
 parseNot :: Parser Condition
-parseNot = Not <$> ((symbol "!") *> condition)
+parseNot = Not <$> ((symbol "!") *> parens condition)
 
 boolean :: Parser Condition
-boolean = Boolean <$> (try ((reserved "true") *> pure True) <|> (reserved "false" *> pure False))
+-- boolean = Boolean <$> (try ((reserved "true") *> pure True) <|> (reserved "false" *> pure False))
+boolean =  try (Boolean <$> (reserved "true" *> pure True))
+       <|> Boolean <$> (reserved "false" *> pure False)
 
 compile :: FilePath -> IO (Either ParseError Program)
 compile filePath = do
