@@ -32,6 +32,7 @@ data Expr = Const Integer
         --   | Concat [Expr]              -- Operation of concatenation of lists
           | ArrayLiteral [Expr]               -- create an array with elements [3, 5, 90+13, 24, 15]
           | ArrayIndex String Expr -- get values of array: y = x[1]
+          deriving (Show)
 
 
 data Condition = Eq Expr Expr
@@ -44,6 +45,7 @@ data Condition = Eq Expr Expr
                | Or Condition Condition
                | Not Condition
                | Boolean Bool
+               deriving (Show)
 
 -- data Order = Eq | Neq | Gt | Lt | Ge | Le
 
@@ -51,7 +53,7 @@ data Condition = Eq Expr Expr
 -- data Scope, between the {}
 type Block = [Statement]
 
-data Program = Program Block
+data Program = Program Block deriving (Show)
 
 -- data Instruction, each line of code
 data Statement = Declaration Declaration
@@ -64,13 +66,16 @@ data Statement = Declaration Declaration
                 | Lock String
                 | Unlock String
                 | Block Block
+                deriving (Show)
 
 -- Declaration of variables, helps backend --
 data Declaration = Primitive Scope Primitive
                  | Derived Scope Derived
+                 deriving (Show)
 
 data Scope = Global
            | Local
+           deriving (Show)
 
 -- If Maybe None then initialize primitive with predefined default value.
 -- Add prefix T to denote Primitive types
@@ -78,22 +83,26 @@ data Primitive = PInt  String (Maybe Expr)    -- Can change it instead to be (Ma
                | PBool String (Maybe Expr)
                | PChar String (Maybe Expr)
                | PLock String
+               deriving (Show)
 
 -- Array type name [sizes (must be integers!)] values
 -- If Maybe None then initialize derived with predefined default value.
 data Derived = Array DerivedType String Integer (Maybe Expr)
              | String String (Maybe Expr)
+             deriving (Show)
 
 -- add prefix T so that we don't have the same constructors as in Primitive
 data DerivedType = DInt
                  | DBool
                  | DChar
                 --  | DString
+                deriving (Show)
 
 
 -- Variable assignment
 data Assignment = Absolute String Expr             -- Includes cases where x = y, x = y - 3 ...
                 | Partial  String Expr Expr       -- Important for array value changing at index:  a[1] = 24
+                deriving (Show)
 
 
 languageDef = 
@@ -136,7 +145,7 @@ statement =  try (Declaration <$> (declaration <* semi))
          <|> try (Assignment <$> (assignment <* semi))
          <|> try (If <$> (reserved "if" *> parens condition) <*> braces block <*> (optionMaybe (reserved "else" *> braces block)))
          <|> try (While <$> (reserved "while" *> parens condition) <*> braces block)
-         <|> try (Print <$> (reserved "print" *> expr <* semi))
+         <|> try (Print <$> (reserved "print" *> parens expr <* semi))
          <|> try (Fork <$ (reserved "fork" *> semi))
          <|> try (Join <$ (reserved "join" *> semi))
          <|> try (Lock <$> (identifier <* (dot *> reserved "lock" *> semi)))
@@ -144,8 +153,8 @@ statement =  try (Declaration <$> (declaration <* semi))
          <|> Block <$> braces block
 
 declaration :: Parser Declaration
-declaration =  try (Primitive <$> scope <*> primitive)
-           <|> Derived <$> scope <*> derived
+declaration =  try (Derived <$> scope <*> derived)
+           <|> Primitive <$> scope <*> primitive
 
 scope :: Parser Scope
 scope =  try (Global <$ (reserved "global"))
@@ -158,7 +167,7 @@ primitive =  try (PInt <$> (reserved "int" *> identifier) <*> (optionMaybe (symb
          <|> PLock <$> (reserved "Lock" *> identifier)
 
 derived :: Parser Derived
-derived =  try (Array <$> derivedType <*> identifier <*> integer <*> (optionMaybe (symbol "=" *> expr)))
+derived =  try (Array <$> derivedType <*> identifier <*> (brackets integer) <*> (optionMaybe (symbol "=" *> expr)))
        <|> String <$> (reserved "String" *> identifier) <*> (optionMaybe (symbol "=" *> expr))
 
 derivedType :: Parser DerivedType
@@ -178,17 +187,26 @@ join :: Parser Statement
 join = Join <$ (reserved "join")
 
 expr :: Parser Expr
-expr = try parseConst
-   <|> try var
-   <|> try add
-   <|> try mult
+expr = try add
    <|> try sub
+   <|> term
+   
+term :: Parser Expr
+term = try mult
    <|> try parseDiv
-   <|> try exprCond
-   <|> try parseChar
-   <|> try parseString
-   <|> try arrayLiteral
-   <|> arrayIndex
+   <|> factor
+
+factor :: Parser Expr
+factor = arrayLiteral
+     <|> try arrayIndex
+     <|> try boolean
+     <|> try (parens exprCond)
+     <|> try var
+     <|> try parseChar
+     <|> try parseString
+     <|> try (parens expr)
+     <|> parseConst
+
 
 parseConst :: Parser Expr
 parseConst = Const <$> integer
@@ -197,16 +215,16 @@ var :: Parser Expr
 var = Var <$> identifier
 
 add :: Parser Expr
-add = Add <$> expr <*> (symbol "+" *> expr)
+add = Add <$> (term <* symbol "+") <*> expr
 
 mult :: Parser Expr
-mult = Mult <$> expr <*> (symbol "*" *> expr)
+mult = Mult <$> (factor <* symbol "*") <*> term
 
 sub :: Parser Expr
-sub = Sub <$> expr <*> (symbol "-" *> expr)
+sub = Sub <$> (term <* symbol "-") <*> expr
 
 parseDiv :: Parser Expr
-parseDiv = Div <$> expr <*> (symbol "/" *> expr)
+parseDiv = Div <$> (factor <* symbol "/") <*> term
 
 exprCond :: Parser Expr
 exprCond = Condition <$> condition
@@ -236,22 +254,22 @@ condition =  try eq
          <|> boolean
 
 eq :: Parser Condition
-eq = Eq <$> expr <*> ((symbol "==") *> expr)
+eq = Eq <$> (expr <* symbol "==") <*> expr
 
 neq :: Parser Condition
-neq = Neq <$> expr <*> ((symbol "!=") *> expr)
+neq = Neq <$> (expr <* symbol "!=") <*> expr
 
 gt :: Parser Condition
-gt = Gt <$> expr <*> ((symbol ">") *> expr)
+gt = Gt <$> (expr <* symbol ">") <*> expr
 
 lt :: Parser Condition
-lt = Lt <$> expr <*> ((symbol "<") *> expr)
+lt = Lt <$> (expr <* symbol "<") <*> expr
 
 ge :: Parser Condition
-ge = Ge <$> expr <*> ((symbol ">=") *> expr)
+ge = Ge <$> (expr <* symbol ">=") <*> expr
 
 le :: Parser Condition
-le = Le <$> expr <*> ((symbol "<=") *> expr)
+le = Le <$> (expr <* symbol ">=") <*> expr
 
 parseAnd :: Parser Condition
 parseAnd = And <$> condition <*> ((symbol "&&") *> condition)
@@ -264,6 +282,14 @@ parseNot = Not <$> ((symbol "!") *> condition)
 
 boolean :: Parser Condition
 boolean = Boolean <$> (try ((reserved "true") *> pure True) <|> (reserved "false" *> pure False))
+
+compile :: FilePath -> IO (Either ParseError Program)
+compile filePath = do
+    input <- readFile filePath
+    let res = parse program "" input
+    return res
+
+-- compile "../test/TestLanguage.txt"
 
 -- num :: Parser Integer
 -- num = do
