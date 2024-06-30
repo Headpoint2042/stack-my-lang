@@ -35,17 +35,17 @@ data Expr = Const Integer
           deriving (Show)
 
 
-data Condition = Eq Expr Expr
-               | Neq Expr Expr
-               | Gt Expr Expr
-               | Lt Expr Expr
-               | Ge Expr Expr
-               | Le Expr Expr
+data Condition = Eq Condition Condition
+               | Neq Condition Condition
+               | Gt Condition Condition
+               | Lt Condition Condition
+               | Ge Condition Condition
+               | Le Condition Condition
                | And Condition Condition
                | Or Condition Condition
                | Not Condition
                | Boolean Bool
-               | Expr String
+               | Expr Expr
                deriving (Show)
 
 -- data Order = Eq | Neq | Gt | Lt | Ge | Le
@@ -132,10 +132,11 @@ commaSep      = Token.commaSep lexer
 charLiteral   = Token.charLiteral lexer
 stringLiteral = Token.stringLiteral lexer
 reserved      = Token.reserved lexer
+whiteSpace    = Token.whiteSpace lexer
 
 
 program :: Parser Program
-program = Program <$> block <* eof
+program =  whiteSpace *> (Program <$> block) <* eof
 
 -- we did not define block as = braces (many statement) because we need to use block for our global scope
 block :: Parser Block
@@ -158,18 +159,18 @@ declaration =  try (Derived <$> scope <*> derived)
            <|> Primitive <$> scope <*> primitive
 
 scope :: Parser Scope
-scope =  try (Global <$ (reserved "global"))
+scope =  try (Global <$ reserved "global")
      <|> pure Local
 
 primitive :: Parser Primitive
-primitive =  try (PInt <$> (reserved "int" *> identifier) <*> (optionMaybe (symbol "=" *> expr)))
-         <|> try (PBool <$> (reserved "bool" *> identifier) <*> (optionMaybe (symbol "=" *> expr)))
-         <|> try (PChar <$> (reserved "char" *> identifier) <*> (optionMaybe (symbol "=" *> expr)))
+primitive =  try (PInt <$> (reserved "int" *> identifier) <*> optionMaybe (symbol "=" *> expr))
+         <|> try (PBool <$> (reserved "bool" *> identifier) <*> optionMaybe (symbol "=" *> expr))
+         <|> try (PChar <$> (reserved "char" *> identifier) <*> optionMaybe (symbol "=" *> expr))
          <|> PLock <$> (reserved "Lock" *> identifier)
 
 derived :: Parser Derived
-derived =  try (Array <$> derivedType <*> identifier <*> (brackets integer) <*> (optionMaybe (symbol "=" *> expr)))
-       <|> String <$> (reserved "String" *> identifier) <*> (optionMaybe (symbol "=" *> expr))
+derived =  try (Array <$> derivedType <*> identifier <*> brackets integer <*> optionMaybe (symbol "=" *> expr))
+       <|> String <$> (reserved "String" *> identifier) <*> optionMaybe (symbol "=" *> expr)
 
 derivedType :: Parser DerivedType
 derivedType =  try (DInt <$ reserved "int")
@@ -182,20 +183,22 @@ assignment =  try (Partial <$> identifier <*> brackets expr <*> (symbol "=" *> e
           <|> Absolute <$> identifier <*> (symbol "=" *> expr)
 
 fork :: Parser Statement
-fork = Fork <$ (reserved "fork")
+fork = Fork <$ reserved "fork"
 
 join :: Parser Statement
-join = Join <$ (reserved "join")
+join = Join <$ reserved "join"
 
 expr :: Parser Expr
 expr = try add
    <|> try sub
    <|> term
-   
+
+-- term :: Parser Expr
+-- term = try parseDiv 
+--    <|> try mult
+--    <|> factor
 term :: Parser Expr
-term = try mult
-   <|> try parseDiv
-   <|> factor
+term = chainl1 factor (multOp <|> divOp)
 
 factor :: Parser Expr
 factor = try arrayLiteral
@@ -208,6 +211,11 @@ factor = try arrayLiteral
      <|> try (parens expr)
      <|> parseConst
 
+multOp :: Parser (Expr -> Expr -> Expr)
+multOp = Mult <$ symbol "*"
+
+divOp :: Parser (Expr -> Expr -> Expr)
+divOp = Div <$ symbol "/"
 
 parseConst :: Parser Expr
 parseConst = Const <$> integer
@@ -238,7 +246,7 @@ parseString :: Parser Expr
 parseString = StringLiteral <$> stringLiteral
 
 arrayLiteral :: Parser Expr
-arrayLiteral = ArrayLiteral <$> (brackets (commaSep expr))
+arrayLiteral = ArrayLiteral <$> brackets (commaSep expr)
 
 arrayIndex :: Parser Expr
 arrayIndex = ArrayIndex <$> identifier <*> brackets expr
@@ -251,7 +259,7 @@ conditionExpr =  try eq
          <|> try ge 
          <|> try le 
          <|> try boolean
-         <|> Expr <$> identifier
+         <|> Expr <$> expr
 
 
 condition :: Parser Condition
@@ -262,32 +270,34 @@ condition = try parseAnd
 
 -- var <|> parens condition
 
+-- bool x  = (y == z == v)
+
 eq :: Parser Condition
-eq = Eq <$> (expr <* symbol "==") <*> expr
+eq = Eq <$> ((Expr <$> expr) <* symbol "==") <*> conditionExpr
 
 neq :: Parser Condition
-neq = Neq <$> (expr <* symbol "!=") <*> expr
+neq = Neq <$> ((Expr <$> expr) <* symbol "!=") <*> conditionExpr
 
 gt :: Parser Condition
-gt = Gt <$> (expr <* symbol ">") <*> expr
+gt = Gt <$> ((Expr <$> expr) <* symbol ">") <*> conditionExpr
 
 lt :: Parser Condition
-lt = Lt <$> (expr <* symbol "<") <*> expr
+lt = Lt <$> ((Expr <$> expr) <* symbol "<") <*> conditionExpr
 
 ge :: Parser Condition
-ge = Ge <$> (expr <* symbol ">=") <*> expr
+ge = Ge <$> ((Expr <$> expr) <* symbol ">=") <*> conditionExpr
 
 le :: Parser Condition
-le = Le <$> (expr <* symbol ">=") <*> expr
+le = Le <$> ((Expr <$> expr) <* symbol ">=") <*> conditionExpr
 
 parseAnd :: Parser Condition
-parseAnd = And <$> parens condition <*> ((symbol "&&") *> parens condition)
+parseAnd = And <$> conditionExpr <*> (symbol "&&" *> condition)
 
 parseOr :: Parser Condition
-parseOr = Or <$> parens condition <*> ((symbol "||") *> parens condition)
+parseOr = Or <$> conditionExpr <*> (symbol "||" *> condition)
 
 parseNot :: Parser Condition
-parseNot = Not <$> ((symbol "!") *> parens condition)
+parseNot = Not <$> (symbol "!" *> conditionExpr)
 
 boolean :: Parser Condition
 -- boolean = Boolean <$> (try ((reserved "true") *> pure True) <|> (reserved "false" *> pure False))

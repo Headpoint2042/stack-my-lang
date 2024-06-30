@@ -1,7 +1,9 @@
 bool z = (1 == 2);
 
-if ((z == true) && (zero)) {
+if (z == true && zero) {
     print(1);
+} else {
+    print(x+true);
 }
 
 while (true) {
