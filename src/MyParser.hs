@@ -10,6 +10,8 @@ import Control.Arrow (left)
 
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
+import Data.Maybe
+import Data.List
 
 
 -- int x = 1;
@@ -71,7 +73,8 @@ data Statement = Declaration Declaration
 
 -- Declaration of variables, helps backend --
 data Declaration = Primitive Scope Primitive
-                 | Derived Scope Derived
+               --   | Derived Scope Derived
+                 | Derived Derived
                  deriving (Show)
 
 data Scope = Global
@@ -155,7 +158,7 @@ statement =  try (Declaration <$> (declaration <* semi))
          <|> Block <$> braces block
 
 declaration :: Parser Declaration
-declaration =  try (Derived <$> scope <*> derived)
+declaration =  try (Derived <$> derived)
            <|> Primitive <$> scope <*> primitive
 
 scope :: Parser Scope
@@ -189,9 +192,7 @@ join :: Parser Statement
 join = Join <$ reserved "join"
 
 expr :: Parser Expr
-expr = try add
-   <|> try sub
-   <|> term
+expr = chainl1 term (addOp <|> subOp)
 
 -- term :: Parser Expr
 -- term = try parseDiv 
@@ -204,12 +205,12 @@ factor :: Parser Expr
 factor = try arrayLiteral
      <|> try arrayIndex
      <|> try (Condition <$> boolean)
-     <|> try (parens exprCond)
+     <|> try parseConst
      <|> try var
      <|> try parseChar
      <|> try parseString
      <|> try (parens expr)
-     <|> parseConst
+     <|> parens (Condition <$> condition)
 
 multOp :: Parser (Expr -> Expr -> Expr)
 multOp = Mult <$ symbol "*"
@@ -223,20 +224,12 @@ parseConst = Const <$> integer
 var :: Parser Expr
 var = Var <$> identifier
 
-add :: Parser Expr
-add = Add <$> (term <* symbol "+") <*> expr
+addOp :: Parser (Expr -> Expr -> Expr)
+-- add = Add <$> (term <* symbol "+") <*> expr
+addOp = Add <$ symbol "+"
 
-mult :: Parser Expr
-mult = Mult <$> (factor <* symbol "*") <*> term
-
-sub :: Parser Expr
-sub = Sub <$> (term <* symbol "-") <*> expr
-
-parseDiv :: Parser Expr
-parseDiv = Div <$> (factor <* symbol "/") <*> term
-
-exprCond :: Parser Expr
-exprCond = Condition <$> condition
+subOp :: Parser (Expr -> Expr -> Expr)
+subOp = Sub <$ symbol "-"
 
 parseChar :: Parser Expr
 parseChar = Char <$> charLiteral
@@ -253,20 +246,19 @@ arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
 conditionExpr :: Parser Condition
 conditionExpr =  try eq 
-         <|> try neq
-         <|> try gt 
-         <|> try lt 
-         <|> try ge 
-         <|> try le 
-         <|> try boolean
-         <|> Expr <$> expr
+             <|> try neq
+             <|> try gt 
+             <|> try lt 
+             <|> try ge 
+             <|> try le 
+             <|> try boolean
+             <|> try (parens condition)
+             <|> Expr <$> expr
 
 
 condition :: Parser Condition
-condition = try parseAnd 
-            <|> try parseOr 
-            <|> try parseNot 
-            <|> conditionExpr
+condition = try parseNot
+        <|> chainl1 conditionExpr (parseAnd <|> parseOr)
 
 -- var <|> parens condition
 
@@ -290,11 +282,11 @@ ge = Ge <$> ((Expr <$> expr) <* symbol ">=") <*> conditionExpr
 le :: Parser Condition
 le = Le <$> ((Expr <$> expr) <* symbol ">=") <*> conditionExpr
 
-parseAnd :: Parser Condition
-parseAnd = And <$> conditionExpr <*> (symbol "&&" *> condition)
+parseAnd :: Parser (Condition -> Condition -> Condition)
+parseAnd = And <$ symbol "&&"
 
-parseOr :: Parser Condition
-parseOr = Or <$> conditionExpr <*> (symbol "||" *> condition)
+parseOr :: Parser (Condition -> Condition -> Condition)
+parseOr = Or <$ symbol "||" 
 
 parseNot :: Parser Condition
 parseNot = Not <$> (symbol "!" *> conditionExpr)
@@ -310,6 +302,13 @@ compile filePath = do
     let res = parse program "" input
     return res
 
+hashmapComp :: IO (Either ParseError Program) -> IO (Either ParseError Hashmap)
+hashmapComp x = do
+  result <- x
+  return $ case result of
+    Right program -> Right (createHashmap program)
+    Left err -> Left err
+
 -- compile "../test/TestLanguage.txt"
 
 -- num :: Parser Integer
@@ -321,4 +320,58 @@ compile filePath = do
 -- NumUntilEnd =  (num <* eof) "Todo: filename"
 
 -- MyLang s = left show $ NumUntilEnd s
+
+
+
+-- Type checking
+
+-- variable hashmap
+
+-- blocks(if while) condition checking if condition
+
+-- global int x = 0;
+-- { global int x = 2; }
+
+-- 1. Check if variables are declared where needed.
+-- 2. Check if referencing variables are according
+-- 3. evaluateExpr
+data Types = TArray DerivedType | TString | TInt | TBool | TChar | TLock deriving (Show)
+data Hashmap = Scope [(Types, String)] [Hashmap] deriving (Show)
+
+createHashmap :: Program -> Hashmap
+createHashmap (Program x) = Scope (hashmapVar x) (hashmapBlock x) 
+
+
+hashmapVar :: Block -> [(Types, String)]
+hashmapVar [] = []
+hashmapVar ((Declaration (Primitive _ x)):xs) = (getPrimitiveType x) : hashmapVar xs
+hashmapVar ((Declaration (Derived x)):xs) = (getDerivedType x) : hashmapVar xs
+hashmapVar (_:xs) = hashmapVar xs 
+
+getPrimitiveType :: Primitive -> (Types, String)
+getPrimitiveType (PInt x _ ) = (TInt, x)
+getPrimitiveType (PBool x _) = (TBool, x)
+getPrimitiveType (PChar x _) = (TChar, x)
+getPrimitiveType (PLock x) = (TLock, x)
+
+getDerivedType :: Derived -> (Types, String)
+getDerivedType (Array (DInt) x _ _) = (TArray DInt, x)
+getDerivedType (Array (DBool) x _ _) = (TArray DBool, x)
+getDerivedType (Array (DChar) x _ _) = (TArray DChar, x)
+getDerivedType (String x _) = (TString, x)
+
+
+hashmapBlock :: Block -> [Hashmap]
+hashmapBlock [] = []
+hashmapBlock ((Block x):xs) = (Scope (hashmapVar x) (hashmapBlock x)) : hashmapBlock xs
+hashmapBlock ((If _ x y):xs) 
+  | isJust y  = (Scope (hashmapVar x) (hashmapBlock x)) : (Scope (hashmapVar (fromJust y)) (hashmapBlock (fromJust y))) : hashmapBlock xs
+  | otherwise = (Scope (hashmapVar x) (hashmapBlock x)) : hashmapBlock xs
+hashmapBlock ((While _ x):xs) = (Scope (hashmapVar x) (hashmapBlock x)) : hashmapBlock xs
+
+-- checkRepeatVar :: [Hashmap] -> Bool
+-- checkRepeatVar [] = True
+-- checkRepeatVar ((Scope list scopes):xs)
+--   | (hasUniqueElements (map snd list)) = && (checkRepeatVar scopes) && (checkRepeatVar xs)
+--   where hasUniqueElements lst = length lst == length (nub lst)
 

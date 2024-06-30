@@ -1,0 +1,58 @@
+// Global declarations
+int globalInt = 10;
+bool globalBool = true;
+
+// Main block
+{
+    // Local declarations
+    int localInt = 5;
+    bool localBool = false;
+
+    // If-else statement
+    if (localInt < 10) {
+        print("localInt is less than 10");
+    } else {
+        print("localInt is not less than 10");
+    }
+
+    // If statement with boolean condition
+    if (globalBool) {
+        print("globalBool is true");
+    }
+
+    // Nested if-else statement
+    if (localInt == 5) {
+        if (globalInt > 10) {
+            print("globalInt is greater than 10");
+        } else {
+            print("globalInt is not greater than 10");
+        }
+    } else {
+        print("localInt is not 5");
+    }
+
+    // While loop
+    while (localInt < 8) {
+        print(localInt);
+        localInt = localInt + 1;
+    }
+
+    // While loop with boolean condition
+    while (localBool == false) {
+        print("localBool is false");
+        localBool = true;
+    }
+
+    // Nested while loop
+    int counter = 0;
+    while (counter < 3) {
+        int innerCounter = 0;
+        while (innerCounter < 2) {
+            print(innerCounter);
+            innerCounter = innerCounter + 1;
+        }
+        counter = counter + 1;
+    }
+
+    print("Finished checking if and while statements.");
+}

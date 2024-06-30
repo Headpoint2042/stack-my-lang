@@ -1,4 +1,5 @@
 bool z = (1 == 2);
+int z;
 
 if (z == true && zero) {
     print(1);
