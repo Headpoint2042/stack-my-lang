@@ -374,4 +374,6 @@ hashmapBlock ((While _ x):xs) = (Scope (hashmapVar x) (hashmapBlock x)) : hashma
 -- checkRepeatVar ((Scope list scopes):xs)
 --   | (hasUniqueElements (map snd list)) = && (checkRepeatVar scopes) && (checkRepeatVar xs)
 --   where hasUniqueElements lst = length lst == length (nub lst)
-
+-- occurrences :: Ord a => [a] -> [(Int, [a])]
+-- occurrences like count or count_ but shows the list of elements that occur X times
+-- occurrences "This is the test line" == [(1,"Tln"),(2,"h"),(3,"eist"),(4," ")]
