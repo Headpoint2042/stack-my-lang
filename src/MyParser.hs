@@ -358,22 +358,27 @@ typeCheckingBlock ((Declaration (Primitive scope x)):xs) h s
       (varType, name) = (getPrimitiveType x)
       newName = name ++ (show ((countElem name s) + 1))
 
+
+-- Counts the number of occurences a element has in a list
 countElem :: (Eq a) => a -> [a] -> Int
 countElem x = length . filter (== x)
 
+-- Checks whever the current scope does or does not have the variable name
 checkReDeclaration :: Hashmap -> String -> Bool
 checkReDeclaration (Scope list []) name = elem name (map snd list)
 checkReDeclaration (Scope _ [s]) name = checkReDeclaration s name
 
+-- Checks whever a variable is shadowing another one
 checkShadowing :: Hashmap -> String -> Bool
-checkShadowing (Scope list []) s = elem s (map snd list)
-checkShadowing (Scope list [h]) s = elem s (map snd list) && checkShadowing h s
+checkShadowing (Scope list []) s = False
+checkShadowing (Scope list [h]) s = elem s (map snd list) || checkShadowing h s
 
+-- Inserts in the current scope the variable and its type
 insertHashmap :: (Types, String) -> Hashmap -> Hashmap
 insertHashmap v (Scope list []) = Scope (list ++ [v]) []
 insertHashmap v (Scope list [s]) = Scope list [insertHashmap v s]
 
--- reanaminig all folowing variables
+-- Goes through each type of statment and renames where possible with the new name
 renameVar :: String -> String -> [Statement] -> [Statement]
 renameVar name newName [] = []
 renameVar name newName ((Declaration (Primitive scope (PInt x mayExpr))):xs) = (Declaration (Primitive scope (PInt (mattchingString name newName x) (renameMaybeExpr name newName mayExpr)))) : renameVar name newName xs
@@ -398,15 +403,19 @@ renameVar name newName ((Lock x):xs) = Lock (mattchingString name newName x ) : 
 renameVar name newName ((Unlock x):xs) = Unlock (mattchingString name newName x ) : renameVar name newName xs  
 renameVar name newName ((Block block):xs) = Block (renameVar name newName block) : renameVar name newName xs 
 
+
+-- Checks whether it is Nothing, then returns Nothing, otherwise tries to rename what is inside of expr
 renameMaybeExpr :: String -> String -> Maybe Expr -> Maybe Expr
 renameMaybeExpr name newName (Nothing) = Nothing
 renameMaybeExpr name newName (Just expr) = Just (renameExpr name newName expr) 
 
+-- Function compares name with a given string, and in case true then return the new name, otherwise return the default name
 mattchingString :: String -> String -> String -> String
 mattchingString name newName x 
-   | x == name = name
-   | otherwise = newName
+   | x == name = newName
+   | otherwise = name
 
+-- Goes through each type of expression and renames where it is possible with the new name
 renameExpr :: String -> String -> Expr -> Expr
 renameExpr name newName (Var x) = Var (mattchingString name newName x)
 renameExpr name newName (Add expr1 expr2) = Add (renameExpr name newName expr1) (renameExpr name newName expr2)
@@ -418,10 +427,12 @@ renameExpr name newName (ArrayLiteral list) = ArrayLiteral (renameExprList name 
 renameExpr name newName (ArrayIndex x expr) = ArrayIndex (mattchingString name newName x) (renameExpr name newName expr)
 renameExpr name newName x = x
 
+-- Goes through each expression in array and then applies renameExpr
 renameExprList :: String -> String -> [Expr] -> [Expr]
 renameExprList name newName [] = []
 renameExprList name newName (expr:xs) = (renameExpr name newName expr) : renameExprList name newName xs
 
+-- Goes through each type of expression and renames where it is possible with the new name
 renameCond :: String -> String -> Condition -> Condition
 renameCond name newName (Eq cond1 cond2) = Eq (renameCond name newName cond1) (renameCond name newName cond2)
 renameCond name newName (Neq cond1 cond2) = Neq (renameCond name newName cond1) (renameCond name newName cond2)
@@ -436,39 +447,16 @@ renameCond name newName (Not cond) = Not (renameCond name newName cond)
 renameCond name newName (Expr expr) = Expr (renameExpr name newName expr)
 renameCond name newName x = x
 
--- hashmapVar :: Block -> [(Types, String)] -> [(Types, String)]
--- hashmapVar [] = []
--- hashmapVar ((Declaration (Primitive _ x)):xs) = (getPrimitiveType x) : hashmapVar xs
--- hashmapVar ((Declaration (Derived x)):xs) = (getDerivedType x) : hashmapVar xs
--- hashmapVar (_:xs) = hashmapVar xs 
-
+-- Gets a primitive type and then exctracts from it the variable type and its name
 getPrimitiveType :: Primitive -> (Types, String)
 getPrimitiveType (PInt x _ ) = (TInt, x)
 getPrimitiveType (PBool x _) = (TBool, x)
 getPrimitiveType (PChar x _) = (TChar, x)
 getPrimitiveType (PLock x) = (TLock, x)
 
+-- Gets a derived type and then exctracts from it the variable type and its name
 getDerivedType :: Derived -> (Types, String)
 getDerivedType (Array (DInt) x _ _) = (TArray DInt, x)
 getDerivedType (Array (DBool) x _ _) = (TArray DBool, x)
 getDerivedType (Array (DChar) x _ _) = (TArray DChar, x)
 getDerivedType (String x _) = (TString, x)
-
-
--- hashmapBlock :: Block -> [Hashmap]
--- hashmapBlock [] = []
--- hashmapBlock ((Block x):xs) = (Scope (hashmapVar x) (hashmapBlock x)) : hashmapBlock xs
--- hashmapBlock ((If _ x y):xs) 
---   | isJust y  = (Scope (hashmapVar x) (hashmapBlock x)) : (Scope (hashmapVar (fromJust y)) (hashmapBlock (fromJust y))) : hashmapBlock xs
---   | otherwise = (Scope (hashmapVar x) (hashmapBlock x)) : hashmapBlock xs
--- hashmapBlock ((While _ x):xs) = (Scope (hashmapVar x) (hashmapBlock x)) : hashmapBlock xs
--- hashmapBlock (_:xs) = hashmapBlock xs
-
--- checkRepeatVar :: [Hashmap] -> Bool
--- checkRepeatVar [] = True
--- checkRepeatVar ((Scope list scopes):xs)
---   | (hasUniqueElements (map snd list)) = && (checkRepeatVar scopes) && (checkRepeatVar xs)
---   where hasUniqueElements lst = length lst == length (nub lst)
--- occurrences :: Ord a => [a] -> [(Int, [a])]
--- occurrences like count or count_ but shows the list of elements that occur X times
--- occurrences "This is the test line" == [(1,"Tln"),(2,"h"),(3,"eist"),(4," ")]
