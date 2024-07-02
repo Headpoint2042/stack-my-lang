@@ -1,6 +1,18 @@
--- module MyParser
---     ( MyLang
---     ) where
+module MyParser where
+    -- ( --MyLang
+    --   compile
+    --   , Program(..)
+    --   , Block(..)
+    --   , Statement(..)
+    --   , Expr(..)
+    --   , Condition(..)
+    --   , Declaration(..)
+    --   , Scope(..)
+    --   , Primitive(..)
+    --   , Derived(..)
+    --   , DerivedType(..)
+    --   , Assignment(..)
+    -- ) where
 
 import Text.Parsec
 import Text.Parsec.String (Parser)
@@ -57,7 +69,8 @@ data Condition = Eq Condition Condition
 -- data Scope, between the {}
 type Block = [Statement]
 
-data Program = Program Block deriving (Show)
+-- data Program = Program Block deriving (Show)
+newtype Program = Program Block deriving (Show)
 
 -- data Instruction, each line of code
 data Statement = Declaration Declaration
@@ -67,6 +80,8 @@ data Statement = Declaration Declaration
                | Print Expr
                | Fork
                | Join
+              --  | Parbegin Integer
+              --  | Parend
                | Lock String
                | Unlock String
                | Block Block
@@ -149,7 +164,7 @@ block = many statement
 statement :: Parser Statement
 statement =  try (Declaration <$> (declaration <* semi)) 
          <|> try (Assignment <$> (assignment <* semi))
-         <|> try (If <$> (reserved "if" *> parens condition) <*> braces block <*> (optionMaybe (reserved "else" *> braces block)))
+         <|> try (If <$> (reserved "if" *> parens condition) <*> braces block <*> optionMaybe (reserved "else" *> braces block))
          <|> try (While <$> (reserved "while" *> parens condition) <*> braces block)
          <|> try (Print <$> (reserved "print" *> parens expr <* semi))
          <|> try (Fork <$ (reserved "fork" *> semi))
