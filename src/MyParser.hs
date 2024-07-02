@@ -344,15 +344,41 @@ createHashmap (Program x) = Program (typeCheckingBlock x (Scope [] []) [])
 
 
 
+-- 1. check redeclaration
+checkReDeclaration :: [Statement] -> [String] -> Bool
+checkReDeclaration [] _ = True
+checkReDeclaration ((Declaration (Primitive s p)):xs) list 
+   | elem name list = error ("Variable " ++ name ++ " was declared twice")
+   | otherwise = checkReDeclaration xs (list ++ [name])
+   where 
+      (varType, name) = getPrimitiveType p 
 
+checkReDeclaration ((Declaration (Derived p)):xs) list 
+   | elem name list = error ("Variable " ++ name ++ " was declared twice")
+   | otherwise = checkReDeclaration xs (list ++ [name])
+   where 
+      (varType, name) = getDerivedType p
+
+checkReDeclaration ((Block block):xs) list = (checkReDeclaration block []) && (checkReDeclaration xs list)
+checkReDeclaration ((If cond block mayBlock):xs) list
+   | isJust mayBlock = x && (checkReDeclaration (fromJust mayBlock) [])
+   | otherwise = x
+   where 
+      x = (checkReDeclaration block []) && (checkReDeclaration xs list)
+checkReDeclaration ((While cond block):xs) list = (checkReDeclaration block []) && (checkReDeclaration xs list)
+checkReDeclaration (_:xs) list = (checkReDeclaration xs list)
+
+ 
+-- 2. renaming
 
 
 
 -- function to do the type checking
 typeCheckingBlock :: [Statement] -> Hashmap -> [String] -> [Statement]
 typeCheckingBlock ((Declaration (Primitive scope x)):xs) h s 
-   | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
+   -- | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
    | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope x)):xs)) (insertHashmap (varType, newName) h) (s ++ [name])
+   | otherwise = []
    -- has to be continued with which other tests should be done
    where 
       (varType, name) = (getPrimitiveType x)
@@ -364,9 +390,9 @@ countElem :: (Eq a) => a -> [a] -> Int
 countElem x = length . filter (== x)
 
 -- Checks whever the current scope does or does not have the variable name
-checkReDeclaration :: Hashmap -> String -> Bool
-checkReDeclaration (Scope list []) name = elem name (map snd list)
-checkReDeclaration (Scope _ [s]) name = checkReDeclaration s name
+-- checkReDeclaration :: Hashmap -> String -> Bool
+-- checkReDeclaration (Scope list []) name = elem name (map snd list)
+-- checkReDeclaration (Scope _ [s]) name = checkReDeclaration s name
 
 -- Checks whever a variable is shadowing another one
 checkShadowing :: Hashmap -> String -> Bool
