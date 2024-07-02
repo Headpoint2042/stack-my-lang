@@ -24,7 +24,6 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Data.Maybe
 import Data.List
-import Data.List
 
 
 -- int x = 1;
@@ -116,7 +115,7 @@ data DerivedType = DInt
                  | DBool
                  | DChar
                 --  | DString
-                deriving (Show)
+                deriving (Show, Eq)
 
 
 -- Variable assignment
@@ -351,7 +350,7 @@ compile filePath = do
 -- 1. Check if variables are declared where needed.
 -- 2. Check if referencing variables are according
 -- 3. evaluateExpr
-data Types = TArray DerivedType | TString | TInt | TBool | TChar | TLock deriving (Show)
+data Types = TArray DerivedType | TString | TInt | TBool | TChar | TLock deriving (Eq, Show)
 data Hashmap = Scope [(Types, String)] [Hashmap] deriving (Show)
 
 createHashmap :: Program -> Program
@@ -392,11 +391,19 @@ checkReDeclaration (_:xs) list = (checkReDeclaration xs list)
 typeCheckingBlock :: [Statement] -> Hashmap -> [String] -> [Statement]
 typeCheckingBlock ((Declaration (Primitive scope x)):xs) h s 
    -- | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
-   | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope x)):xs)) (insertHashmap (varType, newName) h) (s ++ [name])
+   | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope x)):xs)) h (s ++ [name])
    | otherwise = []
    -- has to be continued with which other tests should be done
    where 
       (varType, name) = (getPrimitiveType x)
+      newName = name ++ (show ((countElem name s) + 1))
+typeCheckingBlock ((Declaration (Derived x)):xs) h s 
+   -- | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
+   | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Derived x)):xs)) h (s ++ [name])
+   | otherwise = []
+   -- has to be continued with which other tests should be done
+   where 
+      (varType, name) = (getDerivedType x)
       newName = name ++ (show ((countElem name s) + 1))
 
 
@@ -442,7 +449,8 @@ renameVar name newName ((Print x):xs) = (Print (renameExpr name newName x)) : re
 
 renameVar name newName ((Lock x):xs) = Lock (mattchingString name newName x ) : renameVar name newName xs 
 renameVar name newName ((Unlock x):xs) = Unlock (mattchingString name newName x ) : renameVar name newName xs  
-renameVar name newName ((Block block):xs) = Block (renameVar name newName block) : renameVar name newName xs 
+renameVar name newName ((Block block):xs) = Block (renameVar name newName block) : renameVar name newName xs
+renameVar name newName (x:xs) = x : renameVar name newName xs 
 
 
 -- Checks whether it is Nothing, then returns Nothing, otherwise tries to rename what is inside of expr
@@ -501,3 +509,65 @@ getDerivedType (Array (DInt) x _ _) = (TArray DInt, x)
 getDerivedType (Array (DBool) x _ _) = (TArray DBool, x)
 getDerivedType (Array (DChar) x _ _) = (TArray DChar, x)
 getDerivedType (String x _) = (TString, x)
+
+typeCheckingExpr :: Expr -> [Types] -> Hashmap -> Types
+typeCheckingExpr (Var x) list scope 
+   | elem typeVar list = typeVar
+   | otherwise = error ("Was not expected " ++ getCorrectType typeVar)
+   where
+      typeVar = extractTypeHashmap scope x
+typeCheckingExpr (Const _) list scope
+   | elem TInt list = TInt
+   | otherwise = error ("Was not expected " ++ getCorrectType TInt)
+typeCheckingExpr (Add expr1 expr2) list scope
+   | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
+   | otherwise = error ("Addition was not possible to different data types")
+typeCheckingExpr (Sub expr1 expr2) list scope
+   | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
+   | otherwise = error ("Substraction was not possible to different data types")
+typeCheckingExpr (Mult expr1 expr2) list scope
+   | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
+   | otherwise = error ("Multiplication was not possible to different data types")
+typeCheckingExpr (Div expr1 expr2) list scope
+   | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
+   | otherwise = error ("Division was not possible to different data types")
+typeCheckingExpr (Condition cond) list scope
+   | elem TBool list && typeCheckingCond cond scope = TBool
+   | otherwise = error ("Was not expected " ++ getCorrectType TBool)
+typeCheckingExpr (Char _) list scope
+   | elem TChar list = TChar
+   | otherwise = error ("Was not expected " ++ getCorrectType TChar)
+typeCheckingExpr (StringLiteral _) list scope
+   | elem TString list = TString
+   | otherwise = error ("Was not expected " ++ getCorrectType TString)
+
+typeCheckingCond :: Condition -> Hashmap -> Bool
+typeCheckingCond (Boolean bool) scope = True
+
+-- Dont allow empty arrays, ex:  int[0] = []
+-- typeCheckingExpr (ArrayLiteral []) _ _= error ("Cannot declare empty arrays")
+-- typeCheckingExpr (ArrayLiteral [x]) list scope
+--    | 
+--    where 
+--       typeVar = typeCheckingExpr x list scope
+-- typeCheckingExpr (ArrayLiteral (x:xs))
+
+
+extractTypeHashmap :: Hashmap -> String -> Types
+extractTypeHashmap (Scope list []) s
+   | elem s (map snd list) = fst $ fromJust (find (\x -> (snd x == s)) list)
+   | otherwise = error ("The variable has not been declared yet: " ++ s)
+extractTypeHashmap (Scope list [h]) s
+   | elem s (map snd list) = fst $ fromJust (find (\x -> (snd x == s)) list)
+   | otherwise = extractTypeHashmap h s
+
+getCorrectType :: Types -> String
+getCorrectType TInt = "Int"
+getCorrectType TBool = "Bool"
+getCorrectType TChar = "Char"
+getCorrectType TLock = "Lock"
+getCorrectType TString = "String"
+getCorrectType (TArray DInt) = "Int[]"
+getCorrectType (TArray DBool) = "Bool[]"
+getCorrectType (TArray DChar) = "Char[]"
+
