@@ -1,18 +1,18 @@
-module MyParser
-    ( --MyLang
-      compile
-      , Program(..)
-      , Block(..)
-      , Statement(..)
-      , Expr(..)
-      , Condition(..)
-      , Declaration(..)
-      , Scope(..)
-      , Primitive(..)
-      , Derived(..)
-      , DerivedType(..)
-      , Assignment(..)
-    ) where
+module MyParser where
+    -- ( --MyLang
+    --   compile
+    --   , Program(..)
+    --   , Block(..)
+    --   , Statement(..)
+    --   , Expr(..)
+    --   , Condition(..)
+    --   , Declaration(..)
+    --   , Scope(..)
+    --   , Primitive(..)
+    --   , Derived(..)
+    --   , DerivedType(..)
+    --   , Assignment(..)
+    -- ) where
 
 import Text.Parsec
 import Text.Parsec.String (Parser)
@@ -68,8 +68,8 @@ data Condition = Eq Condition Condition
 -- data Scope, between the {}
 type Block = [Statement]
 
-data Program = Program Block deriving (Show)
--- newtype Program = Program Block deriving (Show)
+-- data Program = Program Block deriving (Show)
+newtype Program = Program Block deriving (Show)
 
 -- data Instruction, each line of code
 data Statement = Declaration Declaration

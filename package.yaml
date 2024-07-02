@@ -16,6 +16,7 @@ dependencies:
 - sprockell >= 2022.0
 - hspec >= 2.8 && < 2.9
 - QuickCheck >= 2.14 && < 2.15
+- containers
 
 library:
   source-dirs: src

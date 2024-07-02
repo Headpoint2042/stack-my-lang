@@ -27,6 +27,7 @@ library
   build-depends:
       QuickCheck ==2.14.*
     , base >=4.7 && <5
+    , containers
     , hspec ==2.8.*
     , parsec ==3.1.*
     , sprockell >=2022.0
@@ -42,6 +43,7 @@ executable my-lang-exe
   build-depends:
       QuickCheck ==2.14.*
     , base >=4.7 && <5
+    , containers
     , hspec ==2.8.*
     , my-lang
     , parsec ==3.1.*
@@ -59,6 +61,7 @@ test-suite my-lang-test
   build-depends:
       QuickCheck ==2.14.*
     , base >=4.7 && <5
+    , containers
     , hspec ==2.8.*
     , my-lang
     , parsec ==3.1.*
