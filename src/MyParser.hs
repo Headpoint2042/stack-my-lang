@@ -24,7 +24,6 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Data.Maybe
 import Data.List
-import Data.List
 
 
 -- int x = 1;
@@ -36,17 +35,17 @@ import Data.List
 
 -- Expr is rhs of =
 data Expr = Const Integer
+          | Char Char 
           | Var String
           | Add Expr Expr
           | Mult Expr Expr
           | Sub Expr Expr
           | Div Expr Expr
-          | Condition Condition
-          | Char Char                  
-          | StringLiteral String              -- Just a string "Some random text" 
+          | Condition Condition          
         --   | Concat [Expr]              -- Operation of concatenation of lists
           | ArrayLiteral [Expr]               -- create an array with elements [3, 5, 90+13, 24, 15]
           | ArrayIndex String Expr -- get values of array: y = x[1]
+          | StringLiteral String              -- Just a string "Some random text" 
           deriving (Show)
 
 
