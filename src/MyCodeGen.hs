@@ -155,6 +155,44 @@ instance Compilable MyParser.Declaration where
     --TODO: Array and String
 
 
+-- compile code for Assignment
+instance Compilable MyParser.Assignment where
+  compile env asgn = case asgn of
+
+    -- Absolute
+    MyParser.Absolute name expr ->
+
+      -- search for variable in local memory
+      case Map.lookup name (localLookup env) of
+
+        -- variable found in local lookup
+        Just addr -> let reg = getTmpReg
+                         exprCode = genExpr env expr reg
+                         storeCode = exprCode ++ [storeAddr reg addr]
+                         updatedMainCode = mainCode env ++ storeCode
+                      in env { mainCode = updatedMainCode }
+
+        -- variable not found in local lookup
+        Nothing   ->
+
+          -- search for variable in shared memory
+          case Map.lookup name (globalLookup env) of
+
+            -- found
+            Just addr -> let reg = getTmpReg
+                             exprCode = genExpr env expr reg
+                             storeCode = exprCode ++ [writeShMem reg addr]
+                             updatedMainCode = mainCode env ++ storeCode
+                          in env { mainCode = updatedMainCode }
+
+            -- not found in shared memory
+            Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you declared it?"
+    
+    -- TODO: MyParser.Partial
+
+
+
+
 -- generate Expr
 genExpr :: Env -> MyParser.Expr -> RegAddr -> [Instruction]
 genExpr env expr reg = case expr of
