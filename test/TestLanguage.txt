@@ -1,8 +1,6 @@
 int n = 0;
 
-int x [12];
-
-fork;
+int x[12];
 
 Lock l;
 {
@@ -10,13 +8,10 @@ Lock l;
 	print(n);
 	l.lock;
 	l.unlock;
-	join;
 	String s = "Something";
 	if (true == 1+2)
 	{
-		fork;
 	}
-	join;
 	while (false) 
 	{
 		print(n[2]);
