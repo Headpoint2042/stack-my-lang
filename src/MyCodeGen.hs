@@ -33,54 +33,10 @@ codeGen n = [
 -- Lookup tables for local and global memory
 type VarName = String
 type MemoryAddress = Int
--- type Scope = Int
 
 type LocalLookup = Map VarName MemoryAddress
 type GlobalLookup = Map VarName MemoryAddress
--- type LocalScopes = Map Scope LocalLookup
--- we allow global variables to live indefinetly
--- type GlobalScopes = Map Scope GlobalLookup
 
--- Data type to store the state of the program
--- ATTENTION! This is an OBSOLETE data Env that keeps track of scopes
-{-
-data Env = Env { currentScope   :: Scope
-               , nextLocalAddr  :: MemoryAddress    -- local addresses: 36
-               , nextGlobalAddr :: MemoryAddress    -- global addresses: 8
-               , localScopes    :: LocalScopes
-               , globalLookup   :: GlobalLookup
-               , mainCode       :: [Instruction]    -- code for the main thread
-               , threadsCode    :: [[Instruction]]  -- code for new threads
-               } deriving (Show)
-
-initialEnv :: Env
-initialEnv = Env { currentScope   = 0
-                 , nextLocalAddr  = 0
-                 , nextGlobalAddr = 0
-                 , localScopes    = Map.singleton 0 Map.empty
-                 , globalLookup   = Map.empty
-                 , mainCode       = []
-                 , threadsCode    = []
-                 }
-
-addLocalVariable :: VarName -> Env -> (MemoryAddress, Env)
-addLocalVariable name env =
-  let addr = nextLocalAddr env
-      scope = currentScope env
-      currentMap = Map.findWithDefault Map.empty scope (localScopes env)
-      newMap = Map.insert name addr currentMap
-      newLocalScopes = Map.insert scope newMap (localScopes env)
-      newEnv = env { nextLocalAddr = addr + 1, localScopes = newLocalScopes }
-  in (addr, newEnv)
-
-
-addGlobalVariable :: VarName -> Env -> (MemoryAddress, Env)
-addGlobalVariable name env =
-  let addr = nextGlobalAddr env
-      newGlobalLookup = Map.insert name addr (globalLookup env)
-      newEnv = env { nextGlobalAddr = addr + 1, globalLookup = newGlobalLookup }
-  in (addr, newEnv)
--}
 
 data Env = Env { nextLocalAddr  :: MemoryAddress    -- local addresses: 36
                , nextGlobalAddr :: MemoryAddress    -- global addresses: 8
@@ -122,27 +78,100 @@ addGlobalVariable name env =
 --               CODE GENERATION                --
 --------------------------------------------------
 
+-- class for compilable data types of the EDSL
+-- compilable is a class that modifies  the Env ? TODO rethink this comment
+class Compilable a where
+  -- return new Env that contains updated lookups, mainCode, and threadsCode
+  compile :: Env -> a -> Env
+
+instance Compilable MyParser.Statement where
+  compile env stmt = case stmt of
+
+    -- call compile
+    MyParser.Declaration decl            -> compile env decl
+    MyParser.Assignment  asgn            -> compile env asgn
+    MyParser.If cond thenBlock elseBlock -> compile env cond thenBlock elseBlock
+    MyParser.While cond whileBlock       -> compile env cond whileBlock
+    MyParser.Print  expr                 -> compile env expr
+    MyParser.Thread threadBlock          -> compile env threadBlock
+    MyParser.Lock   name                 -> compile env name
+    MyParser.Unlock name                 -> compile env name
+    MyParser.Block  block                -> compile env block
+
+
+-- compile code for Declaration
+instance Compilable MyParser.Declaration where
+  compile env decl = case decl of
+
+    -- Primitive
+    MyParser.Primitive scope typ name maybeExpr ->
+      -- get addr and newEnv
+      let (addr, newEnv) = if scope == MyParser.Global
+                           then addGlobalVariable name env
+                           else addLocalVariable  name env
+
+          -- reg will be used to store the value of the variable (expr or default)
+          reg = getTmpReg env
+          declCode = case maybeExpr of
+          
+            -- evaluate expr and store in memory at addr
+            Just expr -> let exprCode = genExpr env expr reg
+                         in exprCode ++ [storeAddr reg addr]
+
+            -- store default value depending on type at memory addr
+            Nothing   -> case typ of
+              -- default: 0
+              MyParser.TInt   -> let defaultCode = [loadI 0 reg]
+                                 in if scope == MyParser.Global
+                                    then defaultCode ++ [writeShMem reg addr]
+                                    else defaultCode ++ [storeAddr reg addr]
+
+              -- default: 0 = False
+              MyParser.TBool  -> let defaultCode = [loadI 0 reg]
+                                 in if scope == MyParser.Global
+                                    then defaultCode ++ [writeShMem reg addr]
+                                    else defaultCode ++ [storeAddr reg addr]
+
+              -- default: 32 = ' '; instead of 32 we can use (fromInteger $ ord ' ')
+              MyParser.TChar  -> let defaultCode = [loadI 32 reg]
+                                 in if scope == MyParser.Global
+                                    then defaultCode ++ [writeShMem reg addr]
+                                    else defaultCode ++ [storeAddr reg addr]
+            
+          -- update main code
+          updatedMainCode = mainCode newEnv ++ declCode
+
+      in newEnv { mainCode = updatedMainCode }
+
+    -- TLock
+    MyParser.TLock name ->
+      -- locks are stored in shared memory
+      let (addr, newEnv) = addGlobalVariable name env
+          reg = getTmpReg env
+          lockCode = [loadI 0 reg, storeAddr reg addr]
+          updatedMainCode = mainCode newEnv ++ lockCode
+      in newEnv { mainCode = updatedMainCode }
+
+    --TODO: Array and String
+
+
 -- generate Expr
 genExpr :: Env -> MyParser.Expr -> RegAddr -> [Instruction]
 genExpr env expr reg = case expr of
 
-  -- constant and char
-  MyParser.Const val  -> [loadI val reg]
-  MyParser.Char  val  -> [loadI (toInteger $ ord val) reg]
-
-  -- variable
-  MyParser.Var name   -> loadVar env name reg
+  -- constant, char, variable, condition
+  MyParser.Const     val  -> [loadI val reg]
+  MyParser.Char      val  -> [loadI (toInteger $ ord val) reg]
+  MyParser.Var       name -> loadVar env name reg
+  MyParser.Condition cond -> genCond env cond reg
 
   -- binary operations
-  MyParser.Add  e1 e2 -> genBinExpr env Add e1 e2 reg
-  MyParser.Mult e1 e2 -> genBinExpr env Mul e1 e2 reg
+  MyParser.Add  e1 e2     -> genBinExpr env Add e1 e2 reg
+  MyParser.Mult e1 e2     -> genBinExpr env Mul e1 e2 reg
   MyParser.Sub  e1 e2     -> genBinExpr env Sub e1 e2 reg
   -- MyParser.Div  e1 e2 -> genDiv env e1 e2 reg
 
-  -- condition
-  MyParser.Condition cond -> genCond env cond reg
-
-  -- derived types
+  -- derived types TODO
 
 -- generate Condition
 genCond :: Env -> MyParser.Condition -> RegAddr -> [Instruction]
@@ -158,10 +187,10 @@ genCond env cond reg = case cond of
   MyParser.And c1 c2 -> genBinCond env And   c1 c2 reg
   MyParser.Or  c1 c2 -> genBinCond env Or    c1 c2 reg
 
-  -- unary operation (Not), Boolean, and Expr
+  -- unary operation (Not), Boolean, Expr
   MyParser.Not     c -> genNotCond  env c reg
   MyParser.Boolean b -> genBoolCond env b reg
-  MyParser.Expr    e -> genExpr env e reg
+  MyParser.Expr    e -> genExpr     env e reg
 
 -- generate code for Expr binary operations (except division):
 -- Add, Mult, Sub
@@ -204,12 +233,7 @@ genBoolCond env bool reg = [loadI (toInteger $ fromEnum bool) reg]
 
 
 
--- genStatement :: MyParser.Statement -> Env -> Env
--- genStatement stmt env = case stmt of
---   MyParser.Declaration (MyParser.Primitive memScope (MyParser.PInt name expr)) ->
---     case memScope of
---       MyParser.Local ->
---         let (addr, newEnv) = addLocalVariable name env
+
 
 
 -------------------------------------------------------
@@ -226,6 +250,7 @@ getReg env = case freeRegs env of
   []       -> error "No free registers!"
   (r:rs)   -> (r, env { freeRegs = rs })
 
+-- TODO: remove this if obsolete
 -- release a register -> adds it to the list of available registers
 releaseReg :: RegAddr -> Env -> Env
 releaseReg reg env = env { freeRegs = reg : freeRegs env }
@@ -242,6 +267,8 @@ getTmpReg env = case freeRegs env of
 --     Load in Registers     --
 -------------------------------
 
+type Offset = Integer
+
 -- load an immediate value to a register
 loadI :: Integer -> RegAddr -> Instruction
 loadI val = Load (ImmValue $ fromInteger val)
@@ -250,9 +277,13 @@ loadI val = Load (ImmValue $ fromInteger val)
 load :: RegAddr -> RegAddr -> Instruction
 load reg1 = Load (IndAddr reg1)
 
+-- load value from MemAddr into reg 
+loadAddr :: MemAddr -> RegAddr -> Instruction
+loadAddr addr = Load (DirAddr addr)
+
 -- load after an immediate value to reg3
 -- loadAI env addr offset target
-loadAI :: Env -> RegAddr -> Integer -> RegAddr -> [Instruction]
+loadAI :: Env -> RegAddr -> Offset -> RegAddr -> [Instruction]
 loadAI env reg1 offset reg3 =
   let reg2 = getTmpReg env
   in [loadI offset reg2]
@@ -263,8 +294,7 @@ loadAI env reg1 offset reg3 =
 loadVar :: Env -> VarName -> RegAddr -> [Instruction]
 loadVar env name reg = case Map.lookup name (localLookup env) of
   -- load from local memory
-  -- TODO: FIX LOAD
-  Just addr -> [load addr reg]
+  Just addr -> [loadAddr addr reg]
   Nothing   -> case Map.lookup name (globalLookup env) of
     -- load from shMem
     Just addr -> readShMem addr reg
@@ -274,6 +304,17 @@ loadVar env name reg = case Map.lookup name (localLookup env) of
 copyReg :: RegAddr -> RegAddr -> Instruction
 copyReg = Compute Add reg0
 
+-- stores value from reg to MemAddr
+storeAddr :: RegAddr -> MemAddr -> Instruction
+storeAddr reg addr = Store reg (DirAddr addr)
+
+-- stores value from reg to addr plus offset
+storeAI :: Env -> RegAddr -> RegAddr -> Offset -> [Instruction]
+storeAI env reg1 reg2 offset =
+  let reg3 = getTmpReg env
+  in [loadI offset reg3]
+  ++ [Compute Add reg2 reg3 reg3]
+  ++ [Store reg1 (IndAddr reg3)]
 
 ---------------------------
 --     Shared Memory     --

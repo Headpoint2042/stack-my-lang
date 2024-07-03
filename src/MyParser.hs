@@ -68,11 +68,11 @@ data Assignment = Absolute VarName Expr            -- includes cases where x = y
 -- Expr is rhs of =
 data Expr = Const Integer
           | Char Char 
-          | Var String
-          | Add Expr Expr
+          | Var  String
+          | Add  Expr Expr
           | Mult Expr Expr
-          | Sub Expr Expr
-          | Div Expr Expr
+          | Sub  Expr Expr
+          | Div  Expr Expr
           | Condition Condition
           -- bonus
           | ArrayLiteral [Expr]              -- create an array with elements [3, 5, 90+13, 24, 15]
@@ -97,7 +97,7 @@ data Condition = Eq Condition Condition
 
 
 {-
-   compile class: Statement, Declaration, Fork, 
+   compile class: Statement, Declaration, Thread, 
 -}
 
 
