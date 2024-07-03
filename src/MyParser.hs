@@ -77,7 +77,7 @@ data Expr = Const Integer
           | Condition Condition
           -- bonus
           | ArrayLiteral [Expr]              -- create an array with elements [3, 5, 90+13, 24, 15]
-          | ArrayIndex String Expr           -- get values of array: y = x[1]
+          | ArrayIndex VarName Expr           -- get values of array: y = x[1]
           | StringLiteral String             -- a string "Some random text" 
           deriving (Show)
 
@@ -314,8 +314,14 @@ compile filePath = do
 -- 3. evaluateExpr
 
 
-data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  deriving (Show)
-data Hashmap = Scope [(HashmapType, String)] [Hashmap] deriving (Show)
+data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  deriving (Show, Eq)
+data Hashmap = Scope [(HashmapType, VarName)] [Hashmap] deriving (Show)
+
+
+changeType :: MyType -> HashmapType
+changeType TInt = HInt
+changeType TChar = HChar
+changeType TBool = HBool
 
 
 
@@ -375,21 +381,146 @@ checkReDeclaration ((If cond block mayBlock):xs) list
 checkReDeclaration ((While cond block):xs) list = (checkReDeclaration block []) && (checkReDeclaration xs list)
 checkReDeclaration (_:xs) list = (checkReDeclaration xs list)
 
+
+typeCheckingExpr :: Expr -> [HashmapType] -> Hashmap -> HashmapType
+typeCheckingExpr (Const _) list hashmap 
+   | elem HInt list = HInt
+   | otherwise = error (errorExpected HInt)
+typeCheckingExpr (Char _) list hashmap
+   | elem HChar list = HChar
+   | otherwise = error (errorExpected HChar)
+typeCheckingExpr (Var x) list hashmap
+   | elem varType list = varType
+   | otherwise = error (errorExpected varType)
+   where
+      varType = extractTypeHashmap hashmap x
+typeCheckingExpr (Add expr1 expr2) list hashmap
+   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
+   | otherwise = error (errorExpected HInt)
+   where 
+typeCheckingExpr (Sub expr1 expr2) list hashmap
+   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
+   | otherwise = error (errorExpected HInt)
+typeCheckingExpr (Div expr1 expr2) list hashmap
+   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
+   | otherwise = error (errorExpected HInt)
+typeCheckingExpr (Mult expr1 expr2) list hashmap
+   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
+   | otherwise = error (errorExpected HInt)
+typeCheckingExpr (Condition cond) list hashmap
+   | typeCheckingCond cond [HBool] hashmap == HBool && elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+typeCheckingExpr (ArrayLiteral exprList) list hashmap
+   | length exprList == 0 = error ("The array cannot be empty")
+   | otherwise = varType
+   where
+      varType = typeCheckingListExpr exprList list hashmap
+typeCheckingExpr (ArrayIndex x expr) list hashmap
+   | elem varType list && typeCheckingExpr expr [HInt] hashmap == HInt = varType
+   | otherwise = error (errorExpected varType)
+   where
+      HArray varType = extractTypeHashmap hashmap x
+typeCheckingExpr (StringLiteral _) list hashmap
+   | elem HString list = HString
+   | otherwise = error (errorExpected HString)
+
+typeCheckingCond :: Condition -> [HashmapType] -> Hashmap -> HashmapType
+typeCheckingCond (Eq cond1 cond2) list hashmap 
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
+      cond2Type = typeCheckingCond cond2 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
+typeCheckingCond (Neq cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
+      cond2Type = typeCheckingCond cond2 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
+typeCheckingCond (Gt cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
+      cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
+typeCheckingCond (Lt cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
+      cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
+typeCheckingCond (Ge cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
+      cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
+typeCheckingCond (Le cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
+      cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
+typeCheckingCond (And cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HBool] hashmap
+      cond2Type = typeCheckingCond cond2 [HBool] hashmap
+typeCheckingCond (Or cond1 cond2) list hashmap
+   | cond1Type /= cond2Type = error ("Comparing different data types")
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+   where 
+      cond1Type = typeCheckingCond cond1 [HBool] hashmap
+      cond2Type = typeCheckingCond cond2 [HBool] hashmap
+typeCheckingCond (Not cond) list hashmap
+   | elem HBool list && HBool == typeCheckingCond cond [HBool] hashmap = HBool
+   | otherwise = error (errorExpected HBool)
+typeCheckingCond (Boolean _) list hashmap
+   | elem HBool list = HBool
+   | otherwise = error (errorExpected HBool)
+typeCheckingCond (Expr expr) list hashmap = typeCheckingExpr expr list hashmap
+
+typeCheckingMayExpr :: Maybe Expr -> [HashmapType] -> Hashmap -> Bool
+typeCheckingMayExpr mayExpr list hashmap
+   | isJust mayExpr && elem (typeCheckingExpr (fromJust mayExpr) list hashmap) list = True
+   | otherwise = True
+
+
+
+errorExpected :: HashmapType -> String
+errorExpected varType = ("Was not expected " ++ getStringType varType) 
+
+typeCheckingListExpr :: [Expr] -> [HashmapType] -> Hashmap -> HashmapType
+typeCheckingListExpr [x] list hashmap = HArray (typeCheckingExpr x [y | (HArray y) <- list] hashmap)
+typeCheckingListExpr (x:xs) list hashmap
+   | HArray (resType) == typeCheckingListExpr xs list hashmap = HArray (resType)
+   | otherwise = error ("Array has different data types")
+   where
+      newList = [y | (HArray y) <- list] 
+      resType = typeCheckingExpr x newList hashmap
  
 -- 2. renaming
 
-
-
--- -- function to do the type checking
--- typeCheckingBlock :: [Statement] -> Hashmap -> [String] -> [Statement]
--- typeCheckingBlock ((Declaration (Primitive scope x)):xs) h s 
---    -- | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
---    | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope x)):xs)) h (s ++ [name])
---    | otherwise = []
---    -- has to be continued with which other tests should be done
---    where 
---       (varType, name) = (getPrimitiveType x)
---       newName = name ++ (show ((countElem name s) + 1))
+-- function to do the type checking
+typeCheckingBlock :: [Statement] -> Hashmap -> [VarName] -> [Statement]
+typeCheckingBlock ((Declaration (Primitive scope varType name mayExpr)):xs) hashmap list 
+   | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope varType name mayExpr)):xs)) hashmap (list ++ [newName])
+   | typeCheckingMayExpr mayExpr [changeType varType] hashmap = (Declaration (Primitive scope varType name mayExpr)) : typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
+   | otherwise = error ("Unexpected error: " ++ (Declaration (Primitive scope varType name mayExpr)))
+   where 
+      newName 
+         | elem name list = nameStart ++ show ((read [num]) + 1)
+         | otherwise = name ++ "1"
+      (nameStart, num) = (init (name :: String), last (name :: String))
 -- typeCheckingBlock ((Declaration (Derived x)):xs) h s 
 --    -- | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
 --    | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Derived x)):xs)) h (s ++ [name])
@@ -404,20 +535,15 @@ checkReDeclaration (_:xs) list = (checkReDeclaration xs list)
 -- countElem :: (Eq a) => a -> [a] -> Int
 -- countElem x = length . filter (== x)
 
--- -- Checks whever the current scope does or does not have the variable name
--- -- checkReDeclaration :: Hashmap -> String -> Bool
--- -- checkReDeclaration (Scope list []) name = elem name (map snd list)
--- -- checkReDeclaration (Scope _ [s]) name = checkReDeclaration s name
-
 
 
 -- -- Inserts in the current scope the variable and its type
--- insertHashmap :: (Types, String) -> Hashmap -> Hashmap
--- insertHashmap v (Scope list []) = Scope (list ++ [v]) []
--- insertHashmap v (Scope list [s]) = Scope list [insertHashmap v s]
+insertHashmap :: (HashmapType, String) -> Hashmap -> Hashmap
+insertHashmap v (Scope list []) = Scope (list ++ [v]) []
+insertHashmap v (Scope list [s]) = Scope list [insertHashmap v s]
 
 -- Checks whever a variable is shadowing another one
-checkShadowing :: Hashmap -> String -> Bool
+checkShadowing :: Hashmap -> VarName -> Bool
 checkShadowing (Scope list []) s = False
 checkShadowing (Scope list [h]) s = elem s (map snd list) || checkShadowing h s
 
@@ -428,7 +554,7 @@ checkShadowing (Scope list [h]) s = elem s (map snd list) || checkShadowing h s
 
 
 -- Goes through each type of statment and renames where possible with the new name
-renameVar :: String -> String -> [Statement] -> [Statement]
+renameVar :: VarName -> VarName -> [Statement] -> [Statement]
 renameVar name newName [] = []
 renameVar name newName ((Declaration (Primitive scope varType x mayExpr)):xs) = (Declaration (Primitive scope varType (mattchingString name newName x) (renameMaybeExpr name newName mayExpr))) : renameVar name newName xs
 
@@ -453,18 +579,18 @@ renameVar name newName (x:xs) = x : renameVar name newName xs
 
 
 -- Checks whether it is Nothing, then returns Nothing, otherwise tries to rename what is inside of expr
-renameMaybeExpr :: String -> String -> Maybe Expr -> Maybe Expr
+renameMaybeExpr :: VarName -> VarName -> Maybe Expr -> Maybe Expr
 renameMaybeExpr name newName (Nothing) = Nothing
 renameMaybeExpr name newName (Just expr) = Just (renameExpr name newName expr) 
 
 -- Function compares name with a given string, and in case true then return the new name, otherwise return the default name
-mattchingString :: String -> String -> String -> String
+mattchingString :: VarName -> VarName -> VarName -> VarName
 mattchingString name newName x 
    | x == name = newName
    | otherwise = x
 
 -- Goes through each type of expression and renames where it is possible with the new name
-renameExpr :: String -> String -> Expr -> Expr
+renameExpr :: VarName -> VarName -> Expr -> Expr
 renameExpr name newName (Var x) = Var (mattchingString name newName x)
 renameExpr name newName (Add expr1 expr2) = Add (renameExpr name newName expr1) (renameExpr name newName expr2)
 renameExpr name newName (Mult expr1 expr2) = Mult (renameExpr name newName expr1) (renameExpr name newName expr2)
@@ -476,12 +602,12 @@ renameExpr name newName (ArrayIndex x expr) = ArrayIndex (mattchingString name n
 renameExpr name newName x = x
 
 -- Goes through each expression in array and then applies renameExpr
-renameExprList :: String -> String -> [Expr] -> [Expr]
+renameExprList :: VarName -> VarName -> [Expr] -> [Expr]
 renameExprList name newName [] = []
 renameExprList name newName (expr:xs) = (renameExpr name newName expr) : renameExprList name newName xs
 
 -- Goes through each type of expression and renames where it is possible with the new name
-renameCond :: String -> String -> Condition -> Condition
+renameCond :: VarName -> VarName -> Condition -> Condition
 renameCond name newName (Eq cond1 cond2) = Eq (renameCond name newName cond1) (renameCond name newName cond2)
 renameCond name newName (Neq cond1 cond2) = Neq (renameCond name newName cond1) (renameCond name newName cond2)
 renameCond name newName (Gt cond1 cond2) = Gt (renameCond name newName cond1) (renameCond name newName cond2)
@@ -496,50 +622,7 @@ renameCond name newName (Expr expr) = Expr (renameExpr name newName expr)
 renameCond name newName x = x
 
 
--- typeCheckingExpr :: Expr -> [Types] -> Hashmap -> Types
--- typeCheckingExpr (Var x) list scope 
---    | elem typeVar list = typeVar
---    | otherwise = error ("Was not expected " ++ getCorrectType typeVar)
---    where
---       typeVar = extractTypeHashmap scope x
--- typeCheckingExpr (Const _) list scope
---    | elem TInt list = TInt
---    | otherwise = error ("Was not expected " ++ getCorrectType TInt)
--- typeCheckingExpr (Add expr1 expr2) list scope
---    | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
---    | otherwise = error ("Addition was not possible to different data types")
--- typeCheckingExpr (Sub expr1 expr2) list scope
---    | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
---    | otherwise = error ("Substraction was not possible to different data types")
--- typeCheckingExpr (Mult expr1 expr2) list scope
---    | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
---    | otherwise = error ("Multiplication was not possible to different data types")
--- typeCheckingExpr (Div expr1 expr2) list scope
---    | elem TInt list && typeCheckingExpr expr1 [TInt] scope == typeCheckingExpr expr2 [TInt] scope = TInt
---    | otherwise = error ("Division was not possible to different data types")
--- typeCheckingExpr (Condition cond) list scope
---    | elem TBool list && typeCheckingCond cond scope = TBool
---    | otherwise = error ("Was not expected " ++ getCorrectType TBool)
--- typeCheckingExpr (Char _) list scope
---    | elem TChar list = TChar
---    | otherwise = error ("Was not expected " ++ getCorrectType TChar)
--- typeCheckingExpr (StringLiteral _) list scope
---    | elem TString list = TString
---    | otherwise = error ("Was not expected " ++ getCorrectType TString)
-
--- typeCheckingCond :: Condition -> Hashmap -> Bool
--- typeCheckingCond (Boolean bool) scope = True
-
--- Dont allow empty arrays, ex:  int[0] = []
--- typeCheckingExpr (ArrayLiteral []) _ _= error ("Cannot declare empty arrays")
--- typeCheckingExpr (ArrayLiteral [x]) list scope
---    | 
---    where 
---       typeVar = typeCheckingExpr x list scope
--- typeCheckingExpr (ArrayLiteral (x:xs))
-
-
-extractTypeHashmap :: Hashmap -> String -> HashmapType
+extractTypeHashmap :: Hashmap -> VarName -> HashmapType
 extractTypeHashmap (Scope list []) s
    | elem s (map snd list) = fst $ fromJust (find (\x -> (snd x == s)) list)
    | otherwise = error ("The variable has not been declared yet: " ++ s)
@@ -547,13 +630,13 @@ extractTypeHashmap (Scope list [h]) s
    | elem s (map snd list) = fst $ fromJust (find (\x -> (snd x == s)) list)
    | otherwise = extractTypeHashmap h s
 
-getCorrectType :: HashmapType -> String
-getCorrectType HInt = "Int"
-getCorrectType HBool = "Bool"
-getCorrectType HChar = "Char"
-getCorrectType HLock = "Lock"
-getCorrectType HString = "String"
-getCorrectType (HArray HInt) = "Int[]"
-getCorrectType (HArray HBool) = "Bool[]"
-getCorrectType (HArray HChar) = "Char[]"
+getStringType :: HashmapType -> String
+getStringType HInt = "Int"
+getStringType HBool = "Bool"
+getStringType HChar = "Char"
+getStringType HLock = "Lock"
+getStringType HString = "String"
+getStringType (HArray HInt) = "Int[]"
+getStringType (HArray HBool) = "Bool[]"
+getStringType (HArray HChar) = "Char[]"
 
