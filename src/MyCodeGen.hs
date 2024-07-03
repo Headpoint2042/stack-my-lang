@@ -136,11 +136,11 @@ genExpr env expr reg = case expr of
   -- binary operations
   MyParser.Add  e1 e2 -> genBinExpr env Add e1 e2 reg
   MyParser.Mult e1 e2 -> genBinExpr env Mul e1 e2 reg
-  MyParser.Sub  e1 e2 -> genBinExpr env Sub e1 e2 reg
+  MyParser.Sub  e1 e2     -> genBinExpr env Sub e1 e2 reg
   -- MyParser.Div  e1 e2 -> genDiv env e1 e2 reg
 
   -- condition
-  -- MyParser.Condition cond -> genCondition env cond reg
+  MyParser.Condition cond -> genCond env cond reg
 
   -- derived types
 
@@ -263,6 +263,7 @@ loadAI env reg1 offset reg3 =
 loadVar :: Env -> VarName -> RegAddr -> [Instruction]
 loadVar env name reg = case Map.lookup name (localLookup env) of
   -- load from local memory
+  -- TODO: FIX LOAD
   Just addr -> [load addr reg]
   Nothing   -> case Map.lookup name (globalLookup env) of
     -- load from shMem

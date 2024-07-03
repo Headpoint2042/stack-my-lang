@@ -26,12 +26,44 @@ import Data.Maybe
 import Data.List
 
 
--- int x = 1;
--- int x = true; aka int x = 1 ? NOT ALLOWED
--- int y = x;
--- int z = 1 + 1 * 2;
--- int z = (a = 1) - (b = 0) - 1; NOT ALLOWED
--- Still need to check if Array [Expr] all expr are the same type
+------------------------------------------------
+--                    EDSL                    --
+------------------------------------------------
+
+-- data Program = Program Block deriving (Show)
+newtype Program = Program Block deriving (Show)
+
+-- data Scope, between the {}
+type Block = [Statement]
+type VarName = String
+type ArrSize = Integer
+
+-- data Instruction, each line of code
+data Statement = Declaration Declaration
+               | Assignment  Assignment
+               | If          Condition Block (Maybe Block)
+               | While       Condition Block
+               | Print       Expr
+               | Thread      Block
+               | Lock        VarName
+               | Unlock      VarName
+               | Block       Block
+               deriving (Show)
+
+
+data Scope  = Global | Local deriving (Show)
+data MyType = TInt | TBool | TChar deriving (Show)
+
+-- declaration of variables
+data Declaration = Primitive Scope MyType VarName (Maybe Expr)
+                 | TLock     VarName            -- always global
+                 | Array     MyType VarName ArrSize (Maybe Expr)
+                 | String    VarName Expr       -- Expr must be StringLiteral; String is immutable
+
+-- assignment of variables
+data Assignment = Absolute VarName Expr            -- includes cases where x = y, x = y - 3 ...
+                | Partial  VarName Expr Expr       -- important for array value changing at index:  a[1] = 24
+                deriving (Show)
 
 -- Expr is rhs of =
 data Expr = Const Integer
@@ -41,14 +73,15 @@ data Expr = Const Integer
           | Mult Expr Expr
           | Sub Expr Expr
           | Div Expr Expr
-          | Condition Condition          
-        --   | Concat [Expr]              -- Operation of concatenation of lists
-          | ArrayLiteral [Expr]               -- create an array with elements [3, 5, 90+13, 24, 15]
-          | ArrayIndex String Expr -- get values of array: y = x[1]
-          | StringLiteral String              -- Just a string "Some random text" 
+          | Condition Condition
+          -- bonus
+          | ArrayLiteral [Expr]              -- create an array with elements [3, 5, 90+13, 24, 15]
+          | ArrayIndex String Expr           -- get values of array: y = x[1]
+          | StringLiteral String             -- a string "Some random text" 
           deriving (Show)
 
 
+-- 1 == 2 == False works like (1 == 2) == False -> False == False -> True
 data Condition = Eq Condition Condition
                | Neq Condition Condition
                | Gt Condition Condition
@@ -62,66 +95,10 @@ data Condition = Eq Condition Condition
                | Expr Expr
                deriving (Show)
 
--- data Order = Eq | Neq | Gt | Lt | Ge | Le
 
-
--- data Scope, between the {}
-type Block = [Statement]
-
--- data Program = Program Block deriving (Show)
-newtype Program = Program Block deriving (Show)
-
--- data Instruction, each line of code
-data Statement = Declaration Declaration
-               | Assignment  Assignment
-               | If    Condition Block (Maybe Block)
-               | While Condition Block
-               | Print Expr
-               | Fork
-               | Join
-              --  | Parbegin Integer
-              --  | Parend
-               | Lock String
-               | Unlock String
-               | Block Block
-               deriving (Show)
-
--- Declaration of variables, helps backend --
-data Declaration = Primitive Scope Primitive
-               --   | Derived Scope Derived
-                 | Derived Derived
-                 deriving (Show)
-
-data Scope = Global
-           | Local
-           deriving (Show)
-
--- If Maybe None then initialize primitive with predefined default value.
--- Add prefix T to denote Primitive types
-data Primitive = PInt  String (Maybe Expr)    -- Can change it instead to be (Maybe Expr)
-               | PBool String (Maybe Expr)
-               | PChar String (Maybe Expr)
-               | PLock String
-               deriving (Show)
-
--- Array type name [sizes (must be integers!)] values
--- If Maybe None then initialize derived with predefined default value.
-data Derived = Array DerivedType String Integer (Maybe Expr)
-             | String String (Maybe Expr)
-             deriving (Show)
-
--- add prefix T so that we don't have the same constructors as in Primitive
-data DerivedType = DInt
-                 | DBool
-                 | DChar
-                --  | DString
-                deriving (Show)
-
-
--- Variable assignment
-data Assignment = Absolute String Expr             -- Includes cases where x = y, x = y - 3 ...
-                | Partial  String Expr Expr       -- Important for array value changing at index:  a[1] = 24
-                deriving (Show)
+{-
+   compile class: Statement, Declaration, Fork, 
+-}
 
 
 languageDef = 
