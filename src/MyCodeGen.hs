@@ -94,13 +94,9 @@ instance Compilable MyParser.Statement where
     MyParser.Lock        _               -> compile env stmt  -- not sure if this works?
     MyParser.Unlock      _               -> compile env stmt  -- not sure if this works?
     MyParser.Block       block           -> compile env block
-    MyParser.If cond thenBlock elseBlock -> compileIf env cond thenBlock elseBlock
+
+    MyParser.If cond thenBlock elseBlock -> compileIf    env cond thenBlock elseBlock
     MyParser.While cond whileBlock       -> compileWhile env cond whileBlock
-
-    -- TODO
-    -- MyParser.If cond thenBlock elseBlock -> compile env cond thenBlock elseBlock
-    -- MyParser.While cond whileBlock       -> compile env cond whileBlock
-
 
     -- MyParser.Thread threadBlock          -> compile env threadBlock
 
@@ -268,8 +264,8 @@ compileStatements = foldl compile
 
 
 -- compile code for If
-compileIf :: Env -> MyParser.Condition -> MyParser.Block -> MyParser.Block -> Env
-compileIf env cond thenBlock elseBlock =
+compileIf :: Env -> MyParser.Condition -> MyParser.Block -> Maybe MyParser.Block -> Env
+compileIf env cond thenBlock maybeElseBlock =
 
   -- generate not cond for conditional branch
   -- if reg false => do then, jump after else
@@ -281,35 +277,40 @@ compileIf env cond thenBlock elseBlock =
       oldMainCode = mainCode env
 
       -- compile thenBlock with current env
-      --   and compile elseBlock with thenEnv
-      -- we pass thenEnv to elseEnv because we need to
-      --   consistently build threadsCode
-      thenEnv = compile env     thenBlock
-      elseEnv = compile thenEnv elseBlock
+      thenEnv = compile env thenBlock
 
       -- calculate length of then block (with old mainBlock)
       thenLength = length (mainCode thenEnv)
-      -- calculate length of else block (without old mainBlock and then block)
-      elseLength = length (mainCode elseEnv) - thenLength
+
+      -- handle maybe elseBlock
+      (elseEnv, elseLength, jumpAfterElse) = case maybeElseBlock of
+
+        -- else exists
+        Just elseBlock -> let elseEnv = compile thenEnv 
+                              elseLength = length (mainCode elseEnv) - thenLength
+                          in (elseEnv, elseLength, elseLength + 1)
+
+        -- else does not exist => jumpAfterElse is 1 (or we can use 0)
+        Nothing -> (thenEnv, 0, 1)
 
       -- generate relative jumps
       -- thenLength + 1 (last instr of then) + 1 (branch after then) 
-      jumpToElse    = thenLength + 2
-      -- elseLength + 1 (last instr of else)
-      jumpAfterElse = elseLength + 1
+      jumpToElse    = thenLength - length mainCode + 2
 
       -- generate if code
+      -- depending on elseLength append fitting else instructions
       ifCode = condCode
                ++ [branchRel reg jumpToElse]
                ++ drop (length oldMainCode) (mainCode thenEnv)
                ++ [jumpRel jumpAfterElse]
-               ++ drop thenLength (mainCode elseEnv)
+               ++ (if elseLength > 0 then drop thenLength (mainCode elseEnv) else [])
 
       -- add ifCode to old mainCode
       newMainCode = oldMainCode ++ ifCode
   
   -- return elseEnv with updated mainCode
   in elseEnv { mainCode = newMainCode }
+
 
 
 -- compile code for While
@@ -331,21 +332,21 @@ compileWhile env cond whileBlock =
       whileEnv = compile env whileBlock
 
       -- calculate length of whileEnv (with old mainCode)
-      whileLength = length (mainCode whileEnv)
+      whileLength = length (mainCode whileEnv) - length oldMainCode
       -- calculate length of condCode
       condLength  = length condCode
 
       -- calculate relative jumps
-      -- TODO: ask: do I need to add + 1 ??? ask if jumps ok???
-      jumpToCond  = whileLength + condLength + 1
-      -- jumpToWhile = len old mainCode + 1 (last instr of mainCode) + 1 (skip jumpRel)
-      jumpToWhile = length oldMainCode + 2
+      -- jumpt to len (while - main) + 1 (last instr of while)
+      jumpToCond  = whileLength + 1
+      -- jumpToWhile = len cond + len while
+      jumpToWhile = condLength + whileLength 
 
       -- generate while code
       whileCode = [jumpRel jumpToCond]
                   ++ drop (length oldMainCode) (mainCode whileEnv)
                   ++ condCode
-                  ++ [branchRel reg jumpToWhile]
+                  ++ [branchRel reg (-jumpToWhile)]
 
       -- update old mainCode
       newMainCode = oldMainCode ++ whileCode
