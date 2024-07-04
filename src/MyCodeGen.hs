@@ -87,16 +87,18 @@ class Compilable a where
 instance Compilable MyParser.Statement where
   compile env stmt = case stmt of
 
-    -- call compile
+    -- call compile on instances of Compilable
     MyParser.Declaration decl            -> compile env decl
     MyParser.Assignment  asgn            -> compile env asgn
-    MyParser.Print       _               -> compile env stmt  -- not sure if this works?
-    MyParser.Lock        _               -> compile env stmt  -- not sure if this works?
-    MyParser.Unlock      _               -> compile env stmt  -- not sure if this works?
     MyParser.Block       block           -> compile env block
 
-    MyParser.If cond thenBlock elseBlock -> compileIf    env cond thenBlock elseBlock
-    MyParser.While cond whileBlock       -> compileWhile env cond whileBlock
+    -- call special compile functions
+    MyParser.Print       expr            -> compilePrint  env expr
+    MyParser.Lock        name            -> compileLock   env name
+    MyParser.Unlock      name            -> compileUnlock env name
+
+    MyParser.If cond thenBlock elseBlock -> compileIf     env cond thenBlock elseBlock
+    MyParser.While cond whileBlock       -> compileWhile  env cond whileBlock
 
     -- MyParser.Thread threadBlock          -> compile env threadBlock
 
@@ -193,6 +195,7 @@ instance Compilable MyParser.Assignment where
     -- TODO: MyParser.Partial
 
 
+{-
 -- compile code for Print
 instance Compilable MyParser.Print where
   compile env (MyParser.Print expr) =
@@ -201,8 +204,17 @@ instance Compilable MyParser.Print where
         printCode   = exprCode ++ [WriteInstr reg numberIO]
         newMainCode = mainCode env ++ printCode
     in env { mainCode = newMainCode }
+-}
+compilePrint :: Env -> MyParser.Expr -> Env
+compilePrint env expr =
+    let reg = getTmpReg
+        exprCode    = genExpr env expr reg
+        printCode   = exprCode ++ [WriteInstr reg numberIO]
+        newMainCode = mainCode env ++ printCode
+    in env { mainCode = newMainCode }
 
 
+{-
 -- compile code for Lock
 instance Compilable MyParser.Lock where
   compile env (MyParser.Lock name) =
@@ -215,11 +227,36 @@ instance Compilable MyParser.Lock where
                     in env { mainCode = newMainCode }
       -- lock not found
       Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
+-}
+compileLock :: Env -> MyParser.VarName -> Env
+compileLock env name =
+
+    -- searcch for lock in globalLookup
+    case Map.lookup name (globalLookup env) of
+      -- lock found
+      Just addr  -> let lockCode    = getLock addr
+                        newMainCode = mainCode env ++ lockCode
+                    in env { mainCode = newMainCode }
+      -- lock not found
+      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
 
 
--- compile code for Unlock
+{-
+-- compile code for Unlock (similar to Lock)
 instance Compilable MyParser.Unlock where
   compile env (MyParser.Unlock name) =
+
+    -- search for lock in globalLookup
+    case Map.lookup name (globalLookup env) of
+      -- found
+      Just addr  -> let unlockCode  = releaseLock addr
+                        newMainCode = mainCode env ++ unlockCode
+                    in env { mainCode = newMainCode }
+      -- not found
+      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
+-}
+compileUnlock :: Env -> MyParser.VarName -> Env
+compileUnlock env name =
 
     -- search for lock in globalLookup
     case Map.lookup name (globalLookup env) of
@@ -234,7 +271,7 @@ instance Compilable MyParser.Unlock where
 -- compile code for Block
 -- when leaving a block, we need to reset some values to their 
 -- state before entering the block: nextLocalAddr, localLookup, freeRegs
--- remaining values are passed from the block
+-- remaining values are passed from within the block
 instance Compilable MyParser.Block where
   compile env (MyParser.Block stmts) =
 
@@ -254,7 +291,7 @@ instance Compilable MyParser.Block where
     -- return new env
     in newEnv
 
--- compile all statements and pass the new env
+-- compile all statements and pass the new env between them
 compileStatements :: Env -> [MyParser.Statement] -> Env
 compileStatements = foldl compile
 -- compileStatements env [] = env
@@ -310,7 +347,6 @@ compileIf env cond thenBlock maybeElseBlock =
   
   -- return elseEnv with updated mainCode
   in elseEnv { mainCode = newMainCode }
-
 
 
 -- compile code for While
