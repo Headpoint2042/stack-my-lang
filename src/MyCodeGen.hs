@@ -93,14 +93,15 @@ instance Compilable MyParser.Statement where
     MyParser.Print       _               -> compile env stmt
     MyParser.Lock        _               -> compile env stmt
     MyParser.Unlock      _               -> compile env stmt
+    MyParser.Block       block           -> compile env block
 
     -- TODO
     -- MyParser.If cond thenBlock elseBlock -> compile env cond thenBlock elseBlock
     -- MyParser.While cond whileBlock       -> compile env cond whileBlock
 
-    
+
     -- MyParser.Thread threadBlock          -> compile env threadBlock
-    -- MyParser.Block  block                -> compile env block
+
 
 
 -- compile code for Declaration
@@ -117,7 +118,7 @@ instance Compilable MyParser.Declaration where
           -- reg will be used to store the value of the variable (expr or default)
           reg = getTmpReg env
           declCode = case maybeExpr of
-          
+
             -- evaluate expr and store in memory at addr
             Just expr -> let exprCode = genExpr env expr reg
                          in exprCode ++ [storeAddr reg addr]
@@ -141,7 +142,7 @@ instance Compilable MyParser.Declaration where
                                  in if scope == MyParser.Global
                                     then defaultCode ++ [writeShMem reg addr]
                                     else defaultCode ++ [storeAddr reg addr]
-            
+
           -- update main code
           newMainCode = mainCode newEnv ++ declCode
 
@@ -191,7 +192,7 @@ instance Compilable MyParser.Assignment where
 
             -- not found in shared memory
             Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you declared it?"
-    
+
     -- TODO: MyParser.Partial
 
 
@@ -212,7 +213,7 @@ instance Compilable MyParser.Lock where
     -- searcch for lock in globalLookup
     case Map.lookup name (globalLookup env) of
       -- lock found
-      Just addr  -> let lockCode = getLock addr 
+      Just addr  -> let lockCode = getLock addr
                         newMainCode = mainCode env ++ lockCode
                     in env { mainCode = newMainCode }
       -- lock not found
@@ -232,8 +233,38 @@ instance Compilable MyParser.Unlock where
       -- not found
       Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
 
-      
 
+-- compile code for Block
+-- when leaving a block, we need to reset some values to their 
+-- state before entering the block: nextLocalAddr, localLookup, freeRegs
+-- remaining values are passed from the block
+instance Compilable MyParser.Block where
+  compile env (MyParser.Block stmts) =
+
+    -- save states of env before entering block
+    let oldLocalAddr    = nextLocalAddr env
+        oldLocalLookup  = localLookup   env
+        oldFreeRegs     = freeRegs      env
+
+        -- compile the list of statements
+        blockEnv = compileStatements env stmts
+
+        -- restore states of env after exiting block
+        newEnv = blockEnv { nextLocalAddr = oldLocalAddr
+                          , localLookup   = oldLocalLookup
+                          , freeRegs      = oldFreeRegs
+                          }
+    -- return new env
+    in newEnv
+
+
+-- compile all statements and pass the new env
+compileStatements :: Env -> [MyParser.Statement] -> Env
+compileStatements = foldl compile
+-- compileStatements env [] = env
+-- compileStatements env (stmt:stmts) =
+--   let newEnv = compile env stmt
+--   in compileStatements newEnv stmts
 
 
 
