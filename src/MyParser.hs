@@ -24,6 +24,7 @@ import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Data.Maybe
 import Data.List
+import Data.Either
 
 
 ------------------------------------------------
@@ -268,73 +269,32 @@ boolean :: Parser Condition
 boolean =  try (Boolean <$> (reserved "true" *> pure True))
        <|> Boolean <$> (reserved "false" *> pure False)
 
-compile :: FilePath -> IO (Either String Program)
+
+data CompileError = ParseError ParseError | TypeError String deriving (Show)
+
+compile :: FilePath -> IO (Either CompileError Program)
 compile filePath = do
     input <- readFile filePath
     let res = parse program "" input
-    case res of
-        Left err -> return (Left (show err))
-        Right prog -> do
-            typeCheckedResult <- try (evaluate (typeCheckingProgram prog)) :: IO (Either SomeException Program)
-            case typeCheckedResult of
-                Left ex -> return (Left ("Type error: " ++ show ex))
-                Right checkedProg -> return (Right checkedProg)
-
--- hashmapComp :: IO (Either ParseError Program) -> IO (Either ParseError Hashmap)
--- hashmapComp x = do
---   result <- x
---   return $ case result of
---     Right program -> Right (createHashmap program)
---     Left err -> Left err
-
--- compile "../test/TestLanguage.txt"
-
--- num :: Parser Integer
--- num = do
---     n <- many1 digit
---     return (read n)
-
--- NumUntilEnd :: String -> Either ParseError Integer
--- NumUntilEnd =  (num <* eof) "Todo: filename"
-
--- MyLang s = left show $ NumUntilEnd s
-
-
-
-
-
-
-
-
--- Type checking
-
--- variable hashmap
-
--- blocks(if while) condition checking if condition
-
--- global int x = 0;
--- { global int x = 2; }
-
--- 1. Check if variables are declared where needed.
--- 2. Check if referencing variables are according
--- 3. evaluateExpr
+    return $ case res of
+        Left err -> Left (ParseError err)
+        Right prog -> case typeCheckingProgram prog of
+            Left typeErr -> Left (TypeError typeErr)
+            Right checkedProg -> Right checkedProg
 
 
 data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  deriving (Show, Eq)
 data Hashmap = Scope [(HashmapType, VarName)] [Hashmap] deriving (Show)
 
 
-typeCheckingProgram :: Program -> Program
+typeCheckingProgram :: Program -> Either String Program
 typeCheckingProgram (Program block)
-   | checkReDeclaration block [] = Program (typeCheckingBlock block (Scope [] []) [])
-   | otherwise = error ("The program has variables declared multiple times in the same scope")
-
-
-
-
-
-
-
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = Left (fromLeft "" either2)
+   | otherwise = Right (Program (fromRight [] either2))
+   where 
+      either1 = checkReDeclaration block []
+      either2 = typeCheckingBlock block (Scope [] []) []
 
 
 
@@ -347,236 +307,363 @@ changeType TBool = HBool
 
 
 -- Check declaration arrays size is the same
-checkArraySize :: Declaration -> Bool
+checkArraySize :: Declaration -> Either String Bool
 checkArraySize (Array _ _ size (Just (ArrayLiteral array))) 
-   | size == 0 = error ("Cannot give array size 0")
-   | toInteger actualSize == size = True
-   | otherwise = error ("Difference between the size of the array " ++ show size ++ ", and the number of the elements given " ++ show actualSize)
+   | size == 0 = Left ("Cannot give array size 0")
+   | toInteger actualSize == size = Right True
+   | otherwise = Left ("Difference between the size of the array " ++ show size ++ ", and the number of the elements given " ++ show actualSize)
    where
       actualSize = length array
 checkArraySize (Array _ _ size _) 
-   | size == 0 = error ("Cannot give array size 0")
-   | otherwise = True
-checkArraySize _ = True
+   | size == 0 = Left ("Cannot give array size 0")
+   | otherwise = Right True
+checkArraySize _ = Right True
 
 
-checkThread :: [Statement] -> Bool
-checkThread [] = True
-checkThread ((Declaration (TLock _)):xs) = error ("Cannot declare Lock inside a thread block")
-checkThread ((Declaration (Primitive Global _ _ _)):xs) = error ("Cannot declare global variables inside a thread block")
+
+
+checkThread :: [Statement] -> Either String Bool
+checkThread [] = Right True
+checkThread ((Declaration (TLock _)):xs) = Left ("Cannot declare Lock inside a thread block")
+checkThread ((Declaration (Primitive Global _ _ _)):xs) = Left ("Cannot declare global variables inside a thread block")
 checkThread ((If _ block mayBlock):xs)
-   | isJust mayBlock = checkThread block && checkThread (fromJust mayBlock) && checkThread xs
-   | otherwise = checkThread block && checkThread xs
-checkThread ((While _ block):xs) = checkThread block && checkThread xs
-checkThread ((Block block):xs) = checkThread block && checkThread xs
+   | isJust mayBlock = case x of
+                        Left err -> Left err
+                        Right prog -> checkThread (fromJust mayBlock)
+   | otherwise = x
+   where
+      x = case checkThread block of
+         Left err -> Left err
+         Right prog -> checkThread xs
+checkThread ((While _ block):xs) = case checkThread block of
+                                    Left err -> Left err
+                                    Right prog -> checkThread xs
+checkThread ((Block block):xs) = case checkThread block of
+                                    Left err -> Left err
+                                    Right prog -> checkThread xs
 checkThread (_:xs) = checkThread xs
 
-checkWhile :: [Statement] -> Bool
-checkWhile [] = True
-checkWhile ((Declaration (TLock _):xs)) = error ("Cannot declare Lock inside a while block")
-checkWhile ((Declaration (Primitive Global _ _ _)):xs) = error ("Cannot declare global variables inside while block")
-checkWhile ((Thread block):xs) = error ("Cannot declare threads inside while block")
+checkWhile :: [Statement] -> Either String Bool
+checkWhile [] = Right True
+checkWhile ((Declaration (TLock _):xs)) = Left ("Cannot declare Lock inside a while block")
+checkWhile ((Declaration (Primitive Global _ _ _)):xs) = Left ("Cannot declare global variables inside while block")
+checkWhile ((Thread block):xs) = Left ("Cannot declare threads inside while block")
 checkWhile ((If _ block mayBlock):xs)
-   | isJust mayBlock = checkWhile block && checkWhile (fromJust mayBlock) && checkWhile xs
-   | otherwise = checkWhile block && checkWhile xs
-checkWhile ((Block block):xs) = checkWhile block && checkWhile xs
-checkWhile ((While _ block):xs) = checkWhile block && checkWhile xs
+   | isJust mayBlock = case x of
+                        Left err -> Left err
+                        Right prog -> checkWhile (fromJust mayBlock)
+   | otherwise = x
+   where
+      x = case checkWhile block of
+         Left err -> Left err
+         Right prog -> checkWhile xs
+checkWhile ((Block block):xs) = case checkWhile block of
+                                 Left err -> Left err
+                                 Right prog -> checkWhile xs
+checkWhile ((While _ block):xs) = case checkWhile block of
+                                    Left err -> Left err
+                                    Right prog -> checkWhile xs
 checkWhile (_:xs) = checkWhile xs
 
-checkStringDecl :: Declaration -> Bool
-checkStringDecl (String name (StringLiteral _)) = True
-checkStringDecl (String _ _) = error ("Did not declare the string correctly")
-checkStringDecl _ = True
+checkStringDecl :: Declaration -> Either String Bool
+checkStringDecl (String name (StringLiteral _)) = Right True
+checkStringDecl (String _ _) = Left ("Did not declare the string correctly")
+checkStringDecl _ = Right True
 
 
 -- 1. check redeclaration
-checkReDeclaration :: [Statement] -> [String] -> Bool
-checkReDeclaration [] _ = True
+checkReDeclaration :: [Statement] -> [String] -> Either String Bool
+checkReDeclaration [] _ = Right True
 checkReDeclaration ((Declaration (Primitive _ _ name _)):xs) list 
-   | elem name list = error ("Variable " ++ name ++ " was declared twice")
+   | elem name list = Left ("Variable " ++ name ++ " was declared twice")
    | otherwise = checkReDeclaration xs (list ++ [name])
 checkReDeclaration ((Declaration (TLock name)):xs) list 
-   | elem name list = error ("Variable " ++ name ++ " was declared twice")
+   | elem name list = Left ("Variable " ++ name ++ " was declared twice")
    | otherwise = checkReDeclaration xs (list ++ [name])
 checkReDeclaration ((Declaration (Array _ name _ _)):xs) list 
-   | elem name list = error ("Variable " ++ name ++ " was declared twice")
+   | elem name list = Left ("Variable " ++ name ++ " was declared twice")
    | otherwise = checkReDeclaration xs (list ++ [name])
 checkReDeclaration ((Declaration (String name _)):xs) list 
-   | elem name list = error ("Variable " ++ name ++ " was declared twice")
+   | elem name list = Left ("Variable " ++ name ++ " was declared twice")
    | otherwise = checkReDeclaration xs (list ++ [name])
-checkReDeclaration ((Thread block):xs) list = (checkReDeclaration block []) && (checkReDeclaration xs list)
-checkReDeclaration ((Block block):xs) list = (checkReDeclaration block []) && (checkReDeclaration xs list)
+checkReDeclaration ((Thread block):xs) list = case (checkReDeclaration block []) of
+   Left err -> Left err
+   Right prog -> (checkReDeclaration xs list)
+checkReDeclaration ((Block block):xs) list = case (checkReDeclaration block []) of
+   Left err -> Left err
+   Right prog -> (checkReDeclaration xs list)
 checkReDeclaration ((If cond block mayBlock):xs) list
-   | isJust mayBlock = x && (checkReDeclaration (fromJust mayBlock) [])
+   | isJust mayBlock = case x of
+                           Left err -> Left err
+                           Right prog -> (checkReDeclaration (fromJust mayBlock) [])
    | otherwise = x
    where 
-      x = (checkReDeclaration block []) && (checkReDeclaration xs list)
-checkReDeclaration ((While cond block):xs) list = (checkReDeclaration block []) && (checkReDeclaration xs list)
+      x = case (checkReDeclaration block []) of
+         Left err -> Left err
+         Right prog -> (checkReDeclaration xs list)
+checkReDeclaration ((While cond block):xs) list = case (checkReDeclaration block []) of
+         Left err -> Left err
+         Right prog -> (checkReDeclaration xs list)
 checkReDeclaration (_:xs) list = (checkReDeclaration xs list)
 
 
-typeCheckingExpr :: Expr -> [HashmapType] -> Hashmap -> HashmapType
+typeCheckingExpr :: Expr -> [HashmapType] -> Hashmap -> Either String HashmapType
 typeCheckingExpr (Const _) list hashmap 
-   | elem HInt list = HInt
-   | otherwise = error (errorExpected HInt)
+   | elem HInt list = Right HInt
+   | otherwise = Left (errorExpected HInt)
 typeCheckingExpr (Char _) list hashmap
-   | elem HChar list = HChar
-   | otherwise = error (errorExpected HChar)
-typeCheckingExpr (Var x) list hashmap
-   | elem varType list = varType
-   | otherwise = error (errorExpected varType)
-   where
-      varType = extractTypeHashmap hashmap x
-typeCheckingExpr (Add expr1 expr2) list hashmap
-   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
-   | otherwise = error (errorExpected HInt)
+   | elem HChar list = Right HChar
+   | otherwise = Left (errorExpected HChar)
+typeCheckingExpr (Var x) list hashmap 
+   | isLeft eitherVarType = eitherVarType
+   | elem (fromRight HInt eitherVarType) list = eitherVarType
+   | otherwise = Left (errorExpected (fromRight HInt eitherVarType))
    where 
-typeCheckingExpr (Sub expr1 expr2) list hashmap
-   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
-   | otherwise = error (errorExpected HInt)
-typeCheckingExpr (Div expr1 expr2) list hashmap
-   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
-   | otherwise = error (errorExpected HInt)
-typeCheckingExpr (Mult expr1 expr2) list hashmap
-   | typeCheckingExpr expr1 [HInt] hashmap == typeCheckingExpr expr2 [HInt] hashmap && elem HInt list = HInt
-   | otherwise = error (errorExpected HInt)
-typeCheckingExpr (Condition cond) list hashmap
-   | typeCheckingCond cond [HBool] hashmap == HBool && elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
-typeCheckingExpr (ArrayLiteral exprList) list hashmap
-   | length exprList == 0 = error ("The array cannot be empty")
-   | otherwise = varType
-   where
-      varType = typeCheckingListExpr exprList list hashmap
-typeCheckingExpr (ArrayIndex x expr) list hashmap
-   | elem varType list && typeCheckingExpr expr [HInt] hashmap == HInt = varType
-   | otherwise = error (errorExpected varType)
-   where
-      HArray varType = extractTypeHashmap hashmap x
-typeCheckingExpr (StringLiteral _) list hashmap
-   | elem HString list = HString
-   | otherwise = error (errorExpected HString)
+      eitherVarType = extractTypeHashmap hashmap x 
 
-typeCheckingCond :: Condition -> [HashmapType] -> Hashmap -> HashmapType
+
+
+
+typeCheckingExpr (Add expr1 expr2) list hashmap
+   | isLeft eitherVarType1 = eitherVarType1
+   | isLeft eitherVarType2 = eitherVarType2
+   | elem HInt list = Right HInt
+   | otherwise = Left (errorExpected HInt)
+   where
+      eitherVarType1 = typeCheckingExpr expr1 [HInt] hashmap
+      eitherVarType2 = typeCheckingExpr expr2 [HInt] hashmap
+
+typeCheckingExpr (Sub expr1 expr2) list hashmap
+   | isLeft eitherVarType1 = eitherVarType1
+   | isLeft eitherVarType2 = eitherVarType2
+   | elem HInt list = Right HInt
+   | otherwise = Left (errorExpected HInt)
+   where
+      eitherVarType1 = typeCheckingExpr expr1 [HInt] hashmap
+      eitherVarType2 = typeCheckingExpr expr2 [HInt] hashmap
+
+
+typeCheckingExpr (Mult expr1 expr2) list hashmap
+   | isLeft eitherVarType1 = eitherVarType1
+   | isLeft eitherVarType2 = eitherVarType2
+   | elem HInt list = Right HInt
+   | otherwise = Left (errorExpected HInt)
+   where
+      eitherVarType1 = typeCheckingExpr expr1 [HInt] hashmap
+      eitherVarType2 = typeCheckingExpr expr2 [HInt] hashmap
+
+
+typeCheckingExpr (Div expr1 expr2) list hashmap
+   | isLeft eitherVarType1 = eitherVarType1
+   | isLeft eitherVarType2 = eitherVarType2
+   | elem HInt list = Right HInt
+   | otherwise = Left (errorExpected HInt)
+   where
+      eitherVarType1 = typeCheckingExpr expr1 [HInt] hashmap
+      eitherVarType2 = typeCheckingExpr expr2 [HInt] hashmap
+
+
+typeCheckingExpr (Condition cond) list hashmap
+   | isLeft eitherVarType = eitherVarType
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
+   where
+      eitherVarType = typeCheckingCond cond [HBool] hashmap
+
+typeCheckingExpr (ArrayLiteral exprList) list hashmap 
+   | length exprList == 0 = Left ("The array cannot be empty")
+   | otherwise = typeCheckingListExpr exprList list hashmap
+
+
+typeCheckingExpr (ArrayIndex x expr) list hashmap
+   | isLeft eitherVarType = eitherVarType
+   | elem varType list = Right varType
+   | otherwise = Left (errorExpected varType)
+   where
+      varType = (fromHArray (fromRight HInt eitherVarType))
+      eitherVarType = extractTypeHashmap hashmap x
+
+typeCheckingExpr (StringLiteral _) list hashmap
+   | elem HString list = Right HString
+   | otherwise = Left (errorExpected HString)
+
+
+
+typeCheckingCond :: Condition -> [HashmapType] -> Hashmap -> Either String HashmapType
 typeCheckingCond (Eq cond1 cond2) list hashmap 
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
       cond2Type = typeCheckingCond cond2 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
 typeCheckingCond (Neq cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
       cond2Type = typeCheckingCond cond2 [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
 typeCheckingCond (Gt cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
       cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
 typeCheckingCond (Lt cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
       cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
 typeCheckingCond (Ge cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
       cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
 typeCheckingCond (Le cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HInt, HChar] hashmap
       cond2Type = typeCheckingCond cond2 [HInt, HChar] hashmap
 typeCheckingCond (And cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HBool] hashmap
       cond2Type = typeCheckingCond cond2 [HBool] hashmap
 typeCheckingCond (Or cond1 cond2) list hashmap
-   | cond1Type /= cond2Type = error ("Comparing different data types")
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft cond1Type = cond1Type
+   | isLeft cond2Type = cond2Type
+   | cond1Type /= cond2Type = Left ("Comparing different data types")
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
    where 
       cond1Type = typeCheckingCond cond1 [HBool] hashmap
       cond2Type = typeCheckingCond cond2 [HBool] hashmap
 typeCheckingCond (Not cond) list hashmap
-   | elem HBool list && HBool == typeCheckingCond cond [HBool] hashmap = HBool
-   | otherwise = error (errorExpected HBool)
+   | isLeft eitherVarType = eitherVarType
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
+   where
+      eitherVarType = typeCheckingCond cond [HBool] hashmap
 typeCheckingCond (Boolean _) list hashmap
-   | elem HBool list = HBool
-   | otherwise = error (errorExpected HBool)
+   | elem HBool list = Right HBool
+   | otherwise = Left (errorExpected HBool)
 typeCheckingCond (Expr expr) list hashmap = typeCheckingExpr expr list hashmap
 
-typeCheckingMayExpr :: Maybe Expr -> [HashmapType] -> Hashmap -> Bool
+
+
+
+
+typeCheckingMayExpr :: Maybe Expr -> [HashmapType] -> Hashmap -> Either String Bool
 typeCheckingMayExpr mayExpr list hashmap
-   | isJust mayExpr && elem (typeCheckingExpr (fromJust mayExpr) list hashmap) list = True
-   | otherwise = True
+   | isJust mayExpr && isLeft eitherVarType = Left (fromLeft "" eitherVarType)
+   | isJust mayExpr && elem (fromRight HInt eitherVarType) list = Right True  
+   | otherwise = Right True
+   where
+      eitherVarType = typeCheckingExpr (fromJust mayExpr) list hashmap
 
 
+fromHArray :: HashmapType -> HashmapType
+fromHArray (HArray x) = x
+fromHArray x = x
 
 errorExpected :: HashmapType -> String
-errorExpected varType = ("Was not expected " ++ getStringType varType) 
+errorExpected varType = ("In expression was not expected " ++ getStringType varType) 
 
-typeCheckingListExpr :: [Expr] -> [HashmapType] -> Hashmap -> HashmapType
-typeCheckingListExpr [x] list hashmap = HArray (typeCheckingExpr x [y | (HArray y) <- list] hashmap)
+typeCheckingListExpr :: [Expr] -> [HashmapType] -> Hashmap -> Either String HashmapType
+typeCheckingListExpr [x] list hashmap
+   | isLeft eitherVarType = eitherVarType
+   | otherwise = Right (HArray (fromRight HInt eitherVarType))
+   where
+      eitherVarType = (typeCheckingExpr x [y | (HArray y) <- list] hashmap)
 typeCheckingListExpr (x:xs) list hashmap
-   | HArray (resType) == typeCheckingListExpr xs list hashmap = HArray (resType)
-   | otherwise = error ("Array has different data types")
+   | isLeft resType = resType
+   | isLeft eitherVarType = eitherVarType
+   | HArray (fromRight HInt resType) == (fromRight HInt eitherVarType) = Right (HArray (fromRight HInt resType))
+   | otherwise = Left ("Array has different data types")
    where
       newList = [y | (HArray y) <- list] 
       resType = typeCheckingExpr x newList hashmap
+      eitherVarType = typeCheckingListExpr xs list hashmap
  
 -- 2. renaming
 
 -- function to do the type checking
-typeCheckingBlock :: [Statement] -> Hashmap -> [VarName] -> [Statement]
-typeCheckingBlock [] _ _ = []
+typeCheckingBlock :: [Statement] -> Hashmap -> [VarName] -> Either String [Statement]
+typeCheckingBlock [] _ _ = Right []
 typeCheckingBlock ((Declaration (Primitive scope varType name mayExpr)):xs) hashmap list 
    | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope varType name mayExpr)):xs)) hashmap (list ++ [newName])
-   | typeCheckingMayExpr mayExpr [changeType varType] hashmap = (Declaration (Primitive scope varType name mayExpr)) : typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
-   | otherwise = error ("Unexpected error: " ++ show (Declaration (Primitive scope varType name mayExpr)))
+   | isLeft either1 = Left (fromLeft "" either1) 
+   | isLeft either2 = either2 
+   | otherwise = Right ((Declaration (Primitive scope varType name mayExpr)) : (fromRight [] either2)) 
    where 
+      either1 = typeCheckingMayExpr mayExpr [changeType varType] hashmap
+      either2 = typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
          | otherwise = name ++ "1"
       (nameStart, num) = (init (name :: String), last (name :: String))
+
+
 typeCheckingBlock ((Declaration (TLock name)):xs) hashmap list
    | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (TLock name)):xs)) hashmap (list ++ [newName])
-   | otherwise = (Declaration (TLock name)) : typeCheckingBlock xs (insertHashmap (HLock, name) hashmap) list
+   | isLeft either1 = either1
+   | otherwise = Right((Declaration (TLock name)) : (fromRight [] either1))
    where
+      either1 = typeCheckingBlock xs (insertHashmap (HLock, name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
          | otherwise = name ++ "1"
       (nameStart, num) = (init (name :: String), last (name :: String))
+
+
 typeCheckingBlock ((Declaration (Array varType name size mayExpr)):xs) hashmap list
    | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (Array varType name size mayExpr)):xs)) hashmap (list ++ [newName])
-   | checkArraySize (Array varType name size mayExpr) && typeCheckingMayExpr mayExpr [HArray (changeType varType)] hashmap = (Declaration (Array varType name size mayExpr)) : typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
-   | otherwise = error ("Unexpected error: " ++ show (Declaration (Array varType name size mayExpr)))
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = Left (fromLeft "" either2)
+   | isLeft either3 = either3
+   | otherwise = Right ((Declaration (Array varType name size mayExpr)) : (fromRight [] either3)) 
    where
+      either1 = checkArraySize (Array varType name size mayExpr)
+      either2 = typeCheckingMayExpr mayExpr [HArray (changeType varType)] hashmap
+      either3 = typeCheckingBlock xs (insertHashmap (HArray (changeType varType), name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
          | otherwise = name ++ "1"
       (nameStart, num) = (init (name :: String), last (name :: String))
+
+
 typeCheckingBlock ((Declaration (String name expr)):xs) hashmap list
    | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (String name expr)):xs)) hashmap (list ++ [newName])
-   | checkStringDecl (String name expr) = (Declaration (String name expr)) : typeCheckingBlock xs (insertHashmap (HString, name) hashmap) list
-   | otherwise = error ("Unexpected error: " ++ show (Declaration (String name expr)))
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = either2
+   | otherwise = Right ((Declaration (String name expr)) : (fromRight [] either2)) 
    where 
+      either1 = checkStringDecl (String name expr)
+      either2 = typeCheckingBlock xs (insertHashmap (HString, name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
          | otherwise = name ++ "1"
@@ -584,40 +671,106 @@ typeCheckingBlock ((Declaration (String name expr)):xs) hashmap list
 
 
 typeCheckingBlock ((Assignment (Absolute name expr)):xs) hashmap list
-   | elem varType [HInt, HBool, HChar] && typeCheckingMayExpr (Just expr) [varType] hashmap = (Assignment (Absolute name expr)) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Cannot do absolute assignments to " ++ getStringType varType)
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = Left (fromLeft "" either2)
+   | isLeft either3 = either3
+   | elem (fromRight HInt either1) [HInt, HBool, HChar] = Right ((Assignment (Absolute name expr)) : (fromRight [] either3)) 
+   | otherwise = Left ("Cannot do absolute assignments to " ++ getStringType (fromRight HInt either1))
    where
-      varType = extractTypeHashmap hashmap name
+      either1 = extractTypeHashmap hashmap name
+      either2 = typeCheckingMayExpr (Just expr) [fromRight HInt either1] hashmap
+      either3 = typeCheckingBlock xs hashmap list
+
+
 typeCheckingBlock ((Assignment (Partial name index expr)):xs) hashmap list
-   | typeCheckingMayExpr (Just index) [HInt] hashmap && elem varType [HString, HArray HInt, HArray HBool, HArray HChar] && typeCheckingMayExpr (Just expr) [varType] hashmap = (Assignment (Partial name index expr)) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Cannot do partial assignments to " ++ getStringType varType)
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = Left (fromLeft "" either2)
+   | isLeft either3 = Left (fromLeft "" either3)
+   | isLeft either4 = either4
+   | elem (fromRight HInt either1) [HString, HArray HInt, HArray HBool, HArray HChar] = Right ((Assignment (Partial name index expr)) : (fromRight [] either4))
+   | otherwise = Left ("Cannot do partial assignments to " ++ getStringType (fromRight HInt either1) ++ name)
    where
-      varType = extractTypeHashmap hashmap name
+      either1 = extractTypeHashmap hashmap name
+      either2 = typeCheckingMayExpr (Just index) [HInt] hashmap
+      either3 = typeCheckingMayExpr (Just expr) [varType] hashmap
+      either4 = typeCheckingBlock xs hashmap list
+      HArray varType = fromRight HInt either1
 
 typeCheckingBlock ((If cond block mayBlock):xs) hashmap list
-   | isJust mayBlock && typeCheckingCond cond [HBool] hashmap == HBool = (If cond (typeCheckingBlock block (newBlockHashmap hashmap) list) (Just (typeCheckingBlock (fromJust mayBlock) (newBlockHashmap hashmap) list))) : typeCheckingBlock xs hashmap list
-   | typeCheckingCond cond [HBool] hashmap == HBool = (If cond (typeCheckingBlock block (newBlockHashmap hashmap) list) Nothing) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Was expected condition in if statement")
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = either2
+   | isLeft either4 = either4
+   | isJust mayBlock && isLeft either3 = either3
+   | isJust mayBlock = Right ((If cond (fromRight [] either2) (Just (fromRight [] either3))) : (fromRight [] either4))
+   | otherwise = Right ((If cond (fromRight [] either2) Nothing) : (fromRight [] either4))
+   where
+      either1 = typeCheckingCond cond [HBool] hashmap
+      either2 = (typeCheckingBlock block (newBlockHashmap hashmap) list)
+      either3 = (typeCheckingBlock (fromJust mayBlock) (newBlockHashmap hashmap) list)
+      either4 = typeCheckingBlock xs hashmap list
+
+
 typeCheckingBlock ((While cond block):xs) hashmap list
-   | typeCheckingCond cond [HBool] hashmap == HBool && checkWhile block = (While cond (typeCheckingBlock block (newBlockHashmap hashmap) list)) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Was expected condition in while statement")
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = Left (fromLeft "" either2)
+   | isLeft either3 = either3
+   | isLeft either4 = either4
+   | otherwise = Right ((While cond (fromRight [] either3)) : (fromRight [] either4)) 
+   where
+      either1 = typeCheckingCond cond [HBool] hashmap
+      either2 = checkWhile block
+      either3 = (typeCheckingBlock block (newBlockHashmap hashmap) list)
+      either4 = typeCheckingBlock xs hashmap list
+
+
 typeCheckingBlock ((Print expr):xs) hashmap list
-   | typeCheckingMayExpr (Just expr) [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap = (Print expr) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Printing expression has to have the same data type")
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = either2
+   | otherwise = Right ((Print expr) : (fromRight [] either2))
+   where
+      either1 = typeCheckingMayExpr (Just expr) [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap
+      either2 = typeCheckingBlock xs hashmap list
+
+
 typeCheckingBlock ((Thread block):xs) hashmap list
-   | checkThread block = (Thread (typeCheckingBlock block (newBlockHashmap hashmap) list)) : typeCheckingBlock xs hashmap list
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = either2
+   | isLeft either3 = either3
+   | otherwise = Right ((Thread (fromRight [] either2)) : (fromRight [] either3)) 
    | otherwise = error ("Unexpected syntax inside threads")
+   where
+      either1 = checkThread block
+      either2 = typeCheckingBlock block (newBlockHashmap hashmap) list
+      either3 = typeCheckingBlock xs hashmap list
+
+
 typeCheckingBlock ((Lock name):xs) hashmap list
-   | varType == HLock = (Lock name) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Cannot lock data type variable " ++ getStringType varType)
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = either2
+   | (fromRight HInt either1) == HLock = Right ((Lock name) : (fromRight [] either2))
+   | otherwise = Left ("Cannot lock data type variable " ++ getStringType (fromRight HInt either1))
    where 
-      varType = extractTypeHashmap hashmap name
+      either1 = extractTypeHashmap hashmap name
+      either2 = typeCheckingBlock xs hashmap list
+
+
 typeCheckingBlock ((Unlock name):xs) hashmap list
-   | varType == HLock = (Lock name) : typeCheckingBlock xs hashmap list
-   | otherwise = error ("Cannot unlock data type variable " ++ getStringType varType)
+   | isLeft either1 = Left (fromLeft "" either1)
+   | isLeft either2 = either2
+   | (fromRight HInt either1) == HLock = Right ((Unlock name) : (fromRight [] either2))
+   | otherwise = Left ("Cannot unlock data type variable " ++ getStringType (fromRight HInt either1))
    where 
-      varType = extractTypeHashmap hashmap name
-typeCheckingBlock ((Block block):xs) hashmap list= Block (typeCheckingBlock block (newBlockHashmap hashmap) list) : typeCheckingBlock xs hashmap list
+      either1 = extractTypeHashmap hashmap name
+      either2 = typeCheckingBlock xs hashmap list
+
+
+typeCheckingBlock ((Block block):xs) hashmap list 
+   | isLeft either1 = either1
+   | isLeft either2 = either2
+   | otherwise = Right (Block (fromRight [] either1) : (fromRight [] either2)) 
+   where
+      either1 = typeCheckingBlock block (newBlockHashmap hashmap) list
+      either2 = typeCheckingBlock xs hashmap list
 
 
 
@@ -714,12 +867,12 @@ renameCond name newName (Expr expr) = Expr (renameExpr name newName expr)
 renameCond name newName x = x
 
 
-extractTypeHashmap :: Hashmap -> VarName -> HashmapType
+extractTypeHashmap :: Hashmap -> VarName -> Either String HashmapType
 extractTypeHashmap (Scope list []) s
-   | elem s (map snd list) = fst $ fromJust (find (\x -> (snd x == s)) list)
-   | otherwise = error ("The variable has not been declared yet: " ++ s)
+   | elem s (map snd list) = Right (fst $ fromJust (find (\x -> (snd x == s)) list))
+   | otherwise = Left ("The variable has not been declared yet: " ++ s)
 extractTypeHashmap (Scope list [h]) s
-   | elem s (map snd list) = fst $ fromJust (find (\x -> (snd x == s)) list)
+   | elem s (map snd list) = Right (fst $ fromJust (find (\x -> (snd x == s)) list))
    | otherwise = extractTypeHashmap h s
 
 getStringType :: HashmapType -> String

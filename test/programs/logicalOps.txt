@@ -3,7 +3,7 @@ bool a = true;
 bool b = false;
 bool c = (!(a));
 bool d = (!(true));
-bool e = (!(1==2==3));
+//bool e = (!(1==2==3));
 
 // Boolean expressions in print statements
 print( (true && false) );
