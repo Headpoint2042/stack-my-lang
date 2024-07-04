@@ -1,16 +1,18 @@
 // Boolean variable declaration and assignment
 bool a = true;
 bool b = false;
-bool c = (!a);
+bool c = (!(a));
+bool d = (!(true));
+//bool e = (!(1==2==3));
 
 // Boolean expressions in print statements
 print( (true && false) );
 
-print( (!true) );
-print( (!false) );
+print( (!(true)) );
+print( (!(false)) );
 print( (!(a && b)) );
 
-print( ( (true || false) && (a || (!b) ) ) );
+print( ( (true || false) && (a || (!(b)) ) ) );
 
 print( ( (a == b) || (a != b) ) );
 print( ( (a == true) && (b == false) ) );
@@ -23,7 +25,7 @@ if (true && false) {
     print("This should print");
 }
 
-if (!true) {
+if (!(true)) {
     print("This should not print");
 } else {
     print("This should print");
