@@ -223,9 +223,9 @@ arrayIndex :: Parser Expr
 arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
 conditionExpr :: Parser Condition
-conditionExpr =  try boolean
-             <|> try (parens condition)
-             <|> chainl1 (Expr <$> expr) (eq <|> neq <|> gt <|> lt <|> ge <|> le)
+conditionExpr =  try (parens condition)
+             <|> try (chainl1 (Expr <$> expr) (eq <|> neq <|> gt <|> lt <|> ge <|> le))
+             <|> boolean
 
 
 condition :: Parser Condition
@@ -268,11 +268,17 @@ boolean :: Parser Condition
 boolean =  try (Boolean <$> (reserved "true" *> pure True))
        <|> Boolean <$> (reserved "false" *> pure False)
 
-compile :: FilePath -> IO (Either ParseError Program)
+compile :: FilePath -> IO (Either String Program)
 compile filePath = do
     input <- readFile filePath
     let res = parse program "" input
-    return res
+    case res of
+        Left err -> return (Left (show err))
+        Right prog -> do
+            typeCheckedResult <- try (evaluate (typeCheckingProgram prog)) :: IO (Either SomeException Program)
+            case typeCheckedResult of
+                Left ex -> return (Left ("Type error: " ++ show ex))
+                Right checkedProg -> return (Right checkedProg)
 
 -- hashmapComp :: IO (Either ParseError Program) -> IO (Either ParseError Hashmap)
 -- hashmapComp x = do
@@ -318,6 +324,20 @@ data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  
 data Hashmap = Scope [(HashmapType, VarName)] [Hashmap] deriving (Show)
 
 
+typeCheckingProgram :: Program -> Program
+typeCheckingProgram (Program block)
+   | checkReDeclaration block [] = Program (typeCheckingBlock block (Scope [] []) [])
+   | otherwise = error ("The program has variables declared multiple times in the same scope")
+
+
+
+
+
+
+
+
+
+
 changeType :: MyType -> HashmapType
 changeType TInt = HInt
 changeType TChar = HChar
@@ -340,7 +360,8 @@ checkArraySize (Array _ _ size _)
 checkArraySize _ = True
 
 
-checkThread:: [Statement] -> Bool
+checkThread :: [Statement] -> Bool
+checkThread [] = True
 checkThread ((Declaration (TLock _)):xs) = error ("Cannot declare Lock inside a thread block")
 checkThread ((Declaration (Primitive Global _ _ _)):xs) = error ("Cannot declare global variables inside a thread block")
 checkThread ((If _ block mayBlock):xs)
@@ -349,6 +370,18 @@ checkThread ((If _ block mayBlock):xs)
 checkThread ((While _ block):xs) = checkThread block && checkThread xs
 checkThread ((Block block):xs) = checkThread block && checkThread xs
 checkThread (_:xs) = checkThread xs
+
+checkWhile :: [Statement] -> Bool
+checkWhile [] = True
+checkWhile ((Declaration (TLock _):xs)) = error ("Cannot declare Lock inside a while block")
+checkWhile ((Declaration (Primitive Global _ _ _)):xs) = error ("Cannot declare global variables inside while block")
+checkWhile ((Thread block):xs) = error ("Cannot declare threads inside while block")
+checkWhile ((If _ block mayBlock):xs)
+   | isJust mayBlock = checkWhile block && checkWhile (fromJust mayBlock) && checkWhile xs
+   | otherwise = checkWhile block && checkWhile xs
+checkWhile ((Block block):xs) = checkWhile block && checkWhile xs
+checkWhile ((While _ block):xs) = checkWhile block && checkWhile xs
+checkWhile (_:xs) = checkWhile xs
 
 checkStringDecl :: Declaration -> Bool
 checkStringDecl (String name (StringLiteral _)) = True
@@ -512,28 +545,87 @@ typeCheckingListExpr (x:xs) list hashmap
 
 -- function to do the type checking
 typeCheckingBlock :: [Statement] -> Hashmap -> [VarName] -> [Statement]
+typeCheckingBlock [] _ _ = []
 typeCheckingBlock ((Declaration (Primitive scope varType name mayExpr)):xs) hashmap list 
    | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope varType name mayExpr)):xs)) hashmap (list ++ [newName])
    | typeCheckingMayExpr mayExpr [changeType varType] hashmap = (Declaration (Primitive scope varType name mayExpr)) : typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
-   | otherwise = error ("Unexpected error: " ++ (Declaration (Primitive scope varType name mayExpr)))
+   | otherwise = error ("Unexpected error: " ++ show (Declaration (Primitive scope varType name mayExpr)))
    where 
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
          | otherwise = name ++ "1"
       (nameStart, num) = (init (name :: String), last (name :: String))
--- typeCheckingBlock ((Declaration (Derived x)):xs) h s 
---    -- | checkReDeclaration h name = error ("Variable " ++ name ++ " was declared twice")
---    | checkShadowing h name = typeCheckingBlock (renameVar name newName ((Declaration (Derived x)):xs)) h (s ++ [name])
---    | otherwise = []
---    -- has to be continued with which other tests should be done
---    where 
---       (varType, name) = (getDerivedType x)
---       newName = name ++ (show ((countElem name s) + 1))
+typeCheckingBlock ((Declaration (TLock name)):xs) hashmap list
+   | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (TLock name)):xs)) hashmap (list ++ [newName])
+   | otherwise = (Declaration (TLock name)) : typeCheckingBlock xs (insertHashmap (HLock, name) hashmap) list
+   where
+      newName 
+         | elem name list = nameStart ++ show ((read [num]) + 1)
+         | otherwise = name ++ "1"
+      (nameStart, num) = (init (name :: String), last (name :: String))
+typeCheckingBlock ((Declaration (Array varType name size mayExpr)):xs) hashmap list
+   | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (Array varType name size mayExpr)):xs)) hashmap (list ++ [newName])
+   | checkArraySize (Array varType name size mayExpr) && typeCheckingMayExpr mayExpr [HArray (changeType varType)] hashmap = (Declaration (Array varType name size mayExpr)) : typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
+   | otherwise = error ("Unexpected error: " ++ show (Declaration (Array varType name size mayExpr)))
+   where
+      newName 
+         | elem name list = nameStart ++ show ((read [num]) + 1)
+         | otherwise = name ++ "1"
+      (nameStart, num) = (init (name :: String), last (name :: String))
+typeCheckingBlock ((Declaration (String name expr)):xs) hashmap list
+   | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (String name expr)):xs)) hashmap (list ++ [newName])
+   | checkStringDecl (String name expr) = (Declaration (String name expr)) : typeCheckingBlock xs (insertHashmap (HString, name) hashmap) list
+   | otherwise = error ("Unexpected error: " ++ show (Declaration (String name expr)))
+   where 
+      newName 
+         | elem name list = nameStart ++ show ((read [num]) + 1)
+         | otherwise = name ++ "1"
+      (nameStart, num) = (init (name :: String), last (name :: String))
 
 
--- -- Counts the number of occurences a element has in a list
--- countElem :: (Eq a) => a -> [a] -> Int
--- countElem x = length . filter (== x)
+typeCheckingBlock ((Assignment (Absolute name expr)):xs) hashmap list
+   | elem varType [HInt, HBool, HChar] && typeCheckingMayExpr (Just expr) [varType] hashmap = (Assignment (Absolute name expr)) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Cannot do absolute assignments to " ++ getStringType varType)
+   where
+      varType = extractTypeHashmap hashmap name
+typeCheckingBlock ((Assignment (Partial name index expr)):xs) hashmap list
+   | typeCheckingMayExpr (Just index) [HInt] hashmap && elem varType [HString, HArray HInt, HArray HBool, HArray HChar] && typeCheckingMayExpr (Just expr) [varType] hashmap = (Assignment (Partial name index expr)) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Cannot do partial assignments to " ++ getStringType varType)
+   where
+      varType = extractTypeHashmap hashmap name
+
+typeCheckingBlock ((If cond block mayBlock):xs) hashmap list
+   | isJust mayBlock && typeCheckingCond cond [HBool] hashmap == HBool = (If cond (typeCheckingBlock block (newBlockHashmap hashmap) list) (Just (typeCheckingBlock (fromJust mayBlock) (newBlockHashmap hashmap) list))) : typeCheckingBlock xs hashmap list
+   | typeCheckingCond cond [HBool] hashmap == HBool = (If cond (typeCheckingBlock block (newBlockHashmap hashmap) list) Nothing) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Was expected condition in if statement")
+typeCheckingBlock ((While cond block):xs) hashmap list
+   | typeCheckingCond cond [HBool] hashmap == HBool && checkWhile block = (While cond (typeCheckingBlock block (newBlockHashmap hashmap) list)) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Was expected condition in while statement")
+typeCheckingBlock ((Print expr):xs) hashmap list
+   | typeCheckingMayExpr (Just expr) [HInt, HBool, HChar, HArray HInt, HArray HChar, HArray HBool, HString] hashmap = (Print expr) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Printing expression has to have the same data type")
+typeCheckingBlock ((Thread block):xs) hashmap list
+   | checkThread block = (Thread (typeCheckingBlock block (newBlockHashmap hashmap) list)) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Unexpected syntax inside threads")
+typeCheckingBlock ((Lock name):xs) hashmap list
+   | varType == HLock = (Lock name) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Cannot lock data type variable " ++ getStringType varType)
+   where 
+      varType = extractTypeHashmap hashmap name
+typeCheckingBlock ((Unlock name):xs) hashmap list
+   | varType == HLock = (Lock name) : typeCheckingBlock xs hashmap list
+   | otherwise = error ("Cannot unlock data type variable " ++ getStringType varType)
+   where 
+      varType = extractTypeHashmap hashmap name
+typeCheckingBlock ((Block block):xs) hashmap list= Block (typeCheckingBlock block (newBlockHashmap hashmap) list) : typeCheckingBlock xs hashmap list
+
+
+
+
+-- Creates a new empty scope at the top of the hashmap
+newBlockHashmap :: Hashmap -> Hashmap
+newBlockHashmap (Scope list []) = (Scope list [Scope [] []])
+newBlockHashmap (Scope list [s]) = (Scope list [newBlockHashmap s])
 
 
 
