@@ -90,10 +90,11 @@ instance Compilable MyParser.Statement where
     -- call compile
     MyParser.Declaration decl            -> compile env decl
     MyParser.Assignment  asgn            -> compile env asgn
-    MyParser.Print       _               -> compile env stmt
-    MyParser.Lock        _               -> compile env stmt
-    MyParser.Unlock      _               -> compile env stmt
+    MyParser.Print       _               -> compile env stmt  -- not sure if this works?
+    MyParser.Lock        _               -> compile env stmt  -- not sure if this works?
+    MyParser.Unlock      _               -> compile env stmt  -- not sure if this works?
     MyParser.Block       block           -> compile env block
+    MyParser.If cond thenBlock elseBlock -> compileIf env cond thenBlock elseBlock
 
     -- TODO
     -- MyParser.If cond thenBlock elseBlock -> compile env cond thenBlock elseBlock
@@ -101,7 +102,6 @@ instance Compilable MyParser.Statement where
 
 
     -- MyParser.Thread threadBlock          -> compile env threadBlock
-
 
 
 -- compile code for Declaration
@@ -200,8 +200,8 @@ instance Compilable MyParser.Assignment where
 instance Compilable MyParser.Print where
   compile env (MyParser.Print expr) =
     let reg = getTmpReg
-        exprCode  = genExpr env expr reg
-        printCode = exprCode ++ [WriteInstr reg numberIO]
+        exprCode    = genExpr env expr reg
+        printCode   = exprCode ++ [WriteInstr reg numberIO]
         newMainCode = mainCode env ++ printCode
     in env { mainCode = newMainCode }
 
@@ -213,7 +213,7 @@ instance Compilable MyParser.Lock where
     -- searcch for lock in globalLookup
     case Map.lookup name (globalLookup env) of
       -- lock found
-      Just addr  -> let lockCode = getLock addr
+      Just addr  -> let lockCode    = getLock addr
                         newMainCode = mainCode env ++ lockCode
                     in env { mainCode = newMainCode }
       -- lock not found
@@ -227,7 +227,7 @@ instance Compilable MyParser.Unlock where
     -- search for lock in globalLookup
     case Map.lookup name (globalLookup env) of
       -- found
-      Just addr  -> let unlockCode = releaseLock addr
+      Just addr  -> let unlockCode  = releaseLock addr
                         newMainCode = mainCode env ++ unlockCode
                     in env { mainCode = newMainCode }
       -- not found
@@ -257,7 +257,6 @@ instance Compilable MyParser.Block where
     -- return new env
     in newEnv
 
-
 -- compile all statements and pass the new env
 compileStatements :: Env -> [MyParser.Statement] -> Env
 compileStatements = foldl compile
@@ -265,6 +264,52 @@ compileStatements = foldl compile
 -- compileStatements env (stmt:stmts) =
 --   let newEnv = compile env stmt
 --   in compileStatements newEnv stmts
+
+
+-- compile code for If
+compileIf :: Env -> MyParser.Condition -> MyParser.Block -> MyParser.Block -> Env
+compileIf env cond thenBlock elseBlock =
+
+  -- generate not cond for conditional branch
+  -- if reg true  => do then, jump after else
+  -- if reg false => jump to else
+  let reg      = getTmpReg env
+      condCode = genNotCond env cond reg
+
+      -- save current state of mainCode
+      oldMainCode = mainCode env
+
+      -- compile thenBlock with current env
+      --   and compile elseBlock with thenEnv
+      -- we pass thenEnv to elseEnv because we need to
+      --   consistently build threadsCode
+      thenEnv = compile env     thenBlock
+      elseEnv = compile thenEnv elseBlock
+
+      -- calculate the length of generated code for thenBlock and elseBlock
+      -- thenLength = length (mainCode thenEnv) - length oldMainCode
+      -- elseLength = length (mainCode elseEnv) - length oldMainCode - thenLength
+      thenLength = length (mainCode thenEnv)
+      elseLength = length (mainCode elseEnv) - thenLength
+
+      -- generate relative jumps
+      -- thenLength + 1 (last instr of then) + 1 (branch after then) 
+      jumpToElse    = thenLength + 2
+      -- elseLength + 1 (last instr of else)
+      jumpAfterElse = elseLength + 1
+
+      -- generate if code
+      ifCode = condCode
+               ++ [branchRel reg jumpToElse]
+               ++ drop (length oldMainCode) (mainCode thenEnv)
+               ++ [jumpRel jumpAfterElse]
+               ++ drop thenLength (mainCode elseEnv)
+
+      -- add ifCode to old mainCode
+      newMainCode = oldMainCode ++ ifCode
+  
+  -- return elseEnv with updated mainCode
+  in elseEnv { mainCode = newMainCode }
 
 
 
@@ -338,9 +383,9 @@ genBinCond env op c1 c2 reg1 =
 -- condition can be 1 or 0 => check if reg0 == cond:
 -- 0 == 0 => 1;  0 == 1 => 0
 genNotCond :: Env -> MyParser.Condition -> RegAddr -> [Instruction]
-genNotCond env cond reg1 =
-     genCond env cond reg1
-  ++ [Compute Equal reg0 reg1 reg1]
+genNotCond env cond reg =
+     genCond env cond reg
+  ++ [Compute Equal reg0 reg reg]
 
 -- generate boolean
 genBoolCond :: Env -> Bool -> RegAddr -> [Instruction]
@@ -452,3 +497,15 @@ getLock addr =
 -- releases a lock -> write 0 at shared MemAddr
 releaseLock :: MemAddr -> [Instruction]
 releaseLock addr = [writeShMem reg0 addr]
+
+---------------------------
+--     Jump / Branch     --
+---------------------------
+
+-- jump relative
+jumpRel :: CodeAddr -> Instruction
+jumpRel addr = Jump (Rel addr)
+
+-- branch relative if reg != 0
+branchRel :: RegAddr -> CodeAddr -> Instruction
+branchRel reg addr = Branch reg (Rel addr)
