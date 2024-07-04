@@ -95,6 +95,7 @@ instance Compilable MyParser.Statement where
     MyParser.Unlock      _               -> compile env stmt  -- not sure if this works?
     MyParser.Block       block           -> compile env block
     MyParser.If cond thenBlock elseBlock -> compileIf env cond thenBlock elseBlock
+    MyParser.While cond whileBlock       -> compileWhile env cond whileBlock
 
     -- TODO
     -- MyParser.If cond thenBlock elseBlock -> compile env cond thenBlock elseBlock
@@ -271,8 +272,8 @@ compileIf :: Env -> MyParser.Condition -> MyParser.Block -> MyParser.Block -> En
 compileIf env cond thenBlock elseBlock =
 
   -- generate not cond for conditional branch
-  -- if reg true  => do then, jump after else
-  -- if reg false => jump to else
+  -- if reg false => do then, jump after else
+  -- if reg true  => conditional branch to else
   let reg      = getTmpReg env
       condCode = genNotCond env cond reg
 
@@ -286,10 +287,9 @@ compileIf env cond thenBlock elseBlock =
       thenEnv = compile env     thenBlock
       elseEnv = compile thenEnv elseBlock
 
-      -- calculate the length of generated code for thenBlock and elseBlock
-      -- thenLength = length (mainCode thenEnv) - length oldMainCode
-      -- elseLength = length (mainCode elseEnv) - length oldMainCode - thenLength
+      -- calculate length of then block (with old mainBlock)
       thenLength = length (mainCode thenEnv)
+      -- calculate length of else block (without old mainBlock and then block)
       elseLength = length (mainCode elseEnv) - thenLength
 
       -- generate relative jumps
@@ -311,6 +311,47 @@ compileIf env cond thenBlock elseBlock =
   -- return elseEnv with updated mainCode
   in elseEnv { mainCode = newMainCode }
 
+
+-- compile code for While
+compileWhile :: Env -> MyParser.Condition -> MyParser.Block -> Env
+compileWhile env cond whileBlock =
+
+  -- structure: loop code ++ condition code
+
+  -- generate cond for conditional branch
+  -- if reg false => continue
+  -- if reg true  => jump to start of loop
+  let reg      = getTmpReg env
+      condCode = genCond env cond reg
+
+      -- save current state of mainCode
+      oldMainCode = mainCode env
+
+      -- generate code for while block with current env
+      whileEnv = compile env whileBlock
+
+      -- calculate length of whileEnv (with old mainCode)
+      whileLength = length (mainCode whileEnv)
+      -- calculate length of condCode
+      condLength  = length condCode
+
+      -- calculate relative jumps
+      -- TODO: ask: do I need to add + 1 ??? ask if jumps ok???
+      jumpToCond  = whileLength + condLength + 1
+      -- jumpToWhile = len old mainCode + 1 (last instr of mainCode) + 1 (skip jumpRel)
+      jumpToWhile = length oldMainCode + 2
+
+      -- generate while code
+      whileCode = [jumpRel jumpToCond]
+                  ++ drop (length oldMainCode) (mainCode whileEnv)
+                  ++ condCode
+                  ++ [branchRel reg jumpToWhile]
+
+      -- update old mainCode
+      newMainCode = oldMainCode ++ whileCode
+
+  -- return whileEnv with new mainCode
+  in whileEnv { mainCode = newMainCode }
 
 
 -- generate Expr
