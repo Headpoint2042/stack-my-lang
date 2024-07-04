@@ -33,18 +33,20 @@ codeGen n = [
 -- Lookup tables for local and global memory
 type VarName = String
 type MemoryAddress = Int
+type ThreadCount = Int
 
 type LocalLookup = Map VarName MemoryAddress
 type GlobalLookup = Map VarName MemoryAddress
 
 
 data Env = Env { nextLocalAddr  :: MemoryAddress    -- local addresses: 36
-               , nextGlobalAddr :: MemoryAddress    -- global addresses: 8
-               , localLookup    :: LocalLookup
-               , globalLookup   :: GlobalLookup
+               , nextGlobalAddr :: MemoryAddress    -- shared addresses: 8
+               , localLookup    :: LocalLookup      -- lookup map for local memory
+               , globalLookup   :: GlobalLookup     -- lookup map for shared memory
                , freeRegs       :: [RegAddr]        -- list of available registers
                , mainCode       :: [Instruction]    -- code for the main thread
                , threadsCode    :: [[Instruction]]  -- code for new threads
+               , threadCounter  :: ThreadCount
                } deriving (Show)
 
 initialEnv :: Env
@@ -52,9 +54,10 @@ initialEnv = Env { nextLocalAddr  = 0
                  , nextGlobalAddr = 0
                  , localLookup    = Map.empty
                  , globalLookup   = Map.empty
-                 , freeRegs       = [regA, regB, regC, regD, regE, regF]
+                 , freeRegs       = initRegs
                  , mainCode       = []
                  , threadsCode    = []
+                 , threadCounter  = 0
                  }
 
 
@@ -99,8 +102,7 @@ instance Compilable MyParser.Statement where
 
     MyParser.If cond thenBlock elseBlock -> compileIf     env cond thenBlock elseBlock
     MyParser.While cond whileBlock       -> compileWhile  env cond whileBlock
-
-    -- MyParser.Thread threadBlock          -> compile env threadBlock
+    MyParser.Thread threadBlock          -> compileThread env threadBlock
 
 
 -- compile code for Declaration
@@ -170,10 +172,10 @@ instance Compilable MyParser.Assignment where
       case Map.lookup name (localLookup env) of
 
         -- variable found in local lookup
-        Just addr -> let reg = getTmpReg
-                         exprCode = genExpr env expr reg
-                         storeCode = exprCode ++ [storeAddr reg addr]
-                         newMainCode = mainCode env ++ storeCode
+        Just addr ->  let reg = getTmpReg
+                          exprCode = genExpr env expr reg
+                          storeCode = exprCode ++ [storeAddr reg addr]
+                          newMainCode = mainCode env ++ storeCode
                       in env { mainCode = newMainCode }
 
         -- variable not found in local lookup
@@ -193,79 +195,6 @@ instance Compilable MyParser.Assignment where
             Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you declared it?"
 
     -- TODO: MyParser.Partial
-
-
-{-
--- compile code for Print
-instance Compilable MyParser.Print where
-  compile env (MyParser.Print expr) =
-    let reg = getTmpReg
-        exprCode    = genExpr env expr reg
-        printCode   = exprCode ++ [WriteInstr reg numberIO]
-        newMainCode = mainCode env ++ printCode
-    in env { mainCode = newMainCode }
--}
-compilePrint :: Env -> MyParser.Expr -> Env
-compilePrint env expr =
-    let reg = getTmpReg
-        exprCode    = genExpr env expr reg
-        printCode   = exprCode ++ [WriteInstr reg numberIO]
-        newMainCode = mainCode env ++ printCode
-    in env { mainCode = newMainCode }
-
-
-{-
--- compile code for Lock
-instance Compilable MyParser.Lock where
-  compile env (MyParser.Lock name) =
-
-    -- searcch for lock in globalLookup
-    case Map.lookup name (globalLookup env) of
-      -- lock found
-      Just addr  -> let lockCode    = getLock addr
-                        newMainCode = mainCode env ++ lockCode
-                    in env { mainCode = newMainCode }
-      -- lock not found
-      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
--}
-compileLock :: Env -> MyParser.VarName -> Env
-compileLock env name =
-
-    -- searcch for lock in globalLookup
-    case Map.lookup name (globalLookup env) of
-      -- lock found
-      Just addr  -> let lockCode    = getLock addr
-                        newMainCode = mainCode env ++ lockCode
-                    in env { mainCode = newMainCode }
-      -- lock not found
-      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
-
-
-{-
--- compile code for Unlock (similar to Lock)
-instance Compilable MyParser.Unlock where
-  compile env (MyParser.Unlock name) =
-
-    -- search for lock in globalLookup
-    case Map.lookup name (globalLookup env) of
-      -- found
-      Just addr  -> let unlockCode  = releaseLock addr
-                        newMainCode = mainCode env ++ unlockCode
-                    in env { mainCode = newMainCode }
-      -- not found
-      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
--}
-compileUnlock :: Env -> MyParser.VarName -> Env
-compileUnlock env name =
-
-    -- search for lock in globalLookup
-    case Map.lookup name (globalLookup env) of
-      -- found
-      Just addr  -> let unlockCode  = releaseLock addr
-                        newMainCode = mainCode env ++ unlockCode
-                    in env { mainCode = newMainCode }
-      -- not found
-      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
 
 
 -- compile code for Block
@@ -291,6 +220,7 @@ instance Compilable MyParser.Block where
     -- return new env
     in newEnv
 
+
 -- compile all statements and pass the new env between them
 compileStatements :: Env -> [MyParser.Statement] -> Env
 compileStatements = foldl compile
@@ -298,6 +228,44 @@ compileStatements = foldl compile
 -- compileStatements env (stmt:stmts) =
 --   let newEnv = compile env stmt
 --   in compileStatements newEnv stmts
+
+
+-- compile code for Print
+compilePrint :: Env -> MyParser.Expr -> Env
+compilePrint env expr =
+    let reg = getTmpReg
+        exprCode    = genExpr env expr reg
+        printCode   = exprCode ++ [WriteInstr reg numberIO]
+        newMainCode = mainCode env ++ printCode
+    in env { mainCode = newMainCode }
+
+
+-- compile code for Lock
+compileLock :: Env -> MyParser.VarName -> Env
+compileLock env name =
+
+    -- searcch for lock in globalLookup
+    case Map.lookup name (globalLookup env) of
+      -- lock found
+      Just addr  -> let lockCode    = getLock  env addr
+                        newMainCode = mainCode env ++ lockCode
+                    in env { mainCode = newMainCode }
+      -- lock not found
+      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
+
+
+-- compile code for Unlock (similar to Lock)
+compileUnlock :: Env -> MyParser.VarName -> Env
+compileUnlock env name =
+
+    -- search for lock in globalLookup
+    case Map.lookup name (globalLookup env) of
+      -- found
+      Just addr  -> let unlockCode  = releaseLock addr
+                        newMainCode = mainCode env ++ unlockCode
+                    in env { mainCode = newMainCode }
+      -- not found
+      Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
 
 
 -- compile code for If
@@ -323,7 +291,7 @@ compileIf env cond thenBlock maybeElseBlock =
       (elseEnv, elseLength, jumpAfterElse) = case maybeElseBlock of
 
         -- else exists
-        Just elseBlock -> let elseEnv = compile thenEnv 
+        Just elseBlock -> let elseEnv = compile thenEnv
                               elseLength = length (mainCode elseEnv) - thenLength
                           in (elseEnv, elseLength, elseLength + 1)
 
@@ -344,7 +312,7 @@ compileIf env cond thenBlock maybeElseBlock =
 
       -- add ifCode to old mainCode
       newMainCode = oldMainCode ++ ifCode
-  
+
   -- return elseEnv with updated mainCode
   in elseEnv { mainCode = newMainCode }
 
@@ -376,7 +344,7 @@ compileWhile env cond whileBlock =
       -- jumpt to len (while - main) + 1 (last instr of while)
       jumpToCond  = whileLength + 1
       -- jumpToWhile = len cond + len while
-      jumpToWhile = condLength + whileLength 
+      jumpToWhile = condLength + whileLength
 
       -- generate while code
       whileCode = [jumpRel jumpToCond]
@@ -389,6 +357,59 @@ compileWhile env cond whileBlock =
 
   -- return whileEnv with new mainCode
   in whileEnv { mainCode = newMainCode }
+
+
+-- compile code for Thread {Block}
+compileThread :: Env -> MyParser.Block -> Env
+compileThread env threadBlock =
+
+  -- create unique signal variable and update counter
+  let tCount = threadCounter env
+      signalName = "threadSignal" ++ show tCount
+      updatedEnv = env { threadCounter = tCount + 1 }
+
+      -- add signal to shared mem
+      (signalAddr, signalEnv) = addGlobalVariable signalName updatedEnv
+
+      -- reset env for thread {block}
+      threadEnv = initialEnv { nextGlobalAddr = nextGlobalAddr signalEnv
+                             , globalLookup   = globalLookup   signalEnv
+                             }
+
+      -- compile thread {block}
+      compiledThreadEnv = compile threadEnv threadBlock
+
+      -- create "jail" code for the thread
+      -- getTmpReg from compiled threadEnv because each thread has separate regs
+      -- signalReg can be 0 or 1 (because we will use testAndSet)
+      -- this reg is temp because once the thread leaves his "jail" the reg becomes available again
+      signalReg = getTmpReg compiledThreadEnv
+      jailCode  = readShMem signalAddr signalReg  -- 2 instructions
+                  ++ [flipReg signalReg]          -- 1 instruction
+                  ++ [branchRel signalReg (-3)]
+
+      -- add "jail" code to the mainCode of compiledThreadEnv
+      tCode = jailCode ++ mainCode compiledThreadEnv ++ [EndProg]
+
+      -- update threadsCode in env (or updatedEnv)
+      newThreadsCode = tCode : threadsCode env
+
+      -- create code to testAndSet the signal to 1 in shMem
+      -- we will not read reg but we still need to receive from TestAndSet
+      startSignalCode = let reg = getTmpReg updatedEnv
+                        in testAndSet signalAddr reg
+
+      -- update main code (we can use env or updatedEnv)
+      newMainCode = mainCode env ++ startSignalCode
+
+      -- update env with data from compiledThreadEnv
+      newEnv = updatedEnv { nextGlobalAddr = nextGlobalAddr compiledThreadEnv
+                          , globalLookup   = globalLookup compiledThreadEnv
+                          , mainCode       = newMainCode
+                          , threadsCode    = newThreadsCode
+                          }
+  -- return new env
+  in newEnv
 
 
 -- generate Expr
@@ -409,6 +430,7 @@ genExpr env expr reg = case expr of
   -- MyParser.Div  e1 e2 -> genDiv env e1 e2 reg
 
   -- derived types TODO
+
 
 -- generate Condition
 -- evaluates cond and stores result in reg
@@ -463,7 +485,7 @@ genBinCond env op c1 c2 reg1 =
 genNotCond :: Env -> MyParser.Condition -> RegAddr -> [Instruction]
 genNotCond env cond reg =
      genCond env cond reg
-  ++ [Compute Equal reg0 reg reg]
+  ++ [flipReg reg]
 
 -- generate boolean
 genBoolCond :: Env -> Bool -> RegAddr -> [Instruction]
@@ -477,6 +499,9 @@ genBoolCond env bool reg = [loadI (toInteger $ fromEnum bool) reg]
 ------------------------------
 --     Manage Registers     --
 ------------------------------
+
+initRegs :: [RegAddr]
+initRegs = [regA, regB, regC, regD, regE, regF]
 
 -- get a free register and remove it from the list of available registers
 getReg :: Env -> (RegAddr, Env)
@@ -496,6 +521,10 @@ getTmpReg env = case freeRegs env of
   []          -> error "No free registers!"
   (r:_)       -> r
 
+-- flip the value of a reg (0 -> 1; 1 -> 0)
+-- assume reg contains 0 or 1
+flipReg :: RegAddr -> Instruction
+flipReg reg = Compute Equal reg0 reg reg
 
 -------------------------------
 --     Load in Registers     --
@@ -564,17 +593,20 @@ writeShMem reg addr = WriteInstr reg (DirAddr addr)
 
 -- try to acquire the lock for MemAddr
 -- reg is used to check if lock is free or not
-getLock :: MemAddr -> [Instruction]
-getLock addr =
+getLock :: Env -> MemAddr -> [Instruction]
+getLock env addr =
   let reg = getTmpReg env
-  in [TestAndSet (DirAddr addr)]
-  ++ [Receive reg]
-  ++ [Compute Equal reg0 reg reg]
-  ++ [Branch reg (Rel $ -3)]
+  in testAndSet addr reg
+  ++ [flipReg reg]
+  ++ [branchRel (-3)]
 
 -- releases a lock -> write 0 at shared MemAddr
 releaseLock :: MemAddr -> [Instruction]
 releaseLock addr = [writeShMem reg0 addr]
+
+-- TestAndSet from 0 to 1 in shMem and receive response in reg: 1 - success; 0 - failure
+testAndSet :: MemAddr -> RegAddr -> [Instruction]
+testAndSet addr reg = TestAndSet (DirAddr addr) : [Receive reg]
 
 ---------------------------
 --     Jump / Branch     --
