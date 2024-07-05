@@ -4,6 +4,8 @@ import MyParser
 import MyCodeGen
 import Sprockell
 
+import System.Environment
+
 -- Compiles a number into a spril program producing all fibonacci numbers below the number
 -- Compilation might fail
 -- compile :: String -> Either String [Instruction]
@@ -20,6 +22,27 @@ import Sprockell
     --     (Left err) -> fail err
     --     (Right spril) -> run [spril]
 
+
+compile :: FilePath -> IO ()
+compile filePath = do
+    input <- readFile filePath
+    let output = createAST input
+    case output of
+        -- error
+        Left  err -> do
+            putStrLn $ show err
+
+        -- compile ast
+        Right ast -> do
+            let env = compileProgram ast
+            let threads = mainCode env : threadsCode env
+            putStrLn $ "Main Code: " ++ show (mainCode env)
+            run threads
+
+
 main :: IO ()
 main = do
     args <- getArgs
+    case args of
+        [filePath] -> compile filePath
+        []         -> error $ "Please give a file path something!"

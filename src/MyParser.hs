@@ -76,7 +76,7 @@ data Expr = Const Integer
           | Sub  Expr Expr
           | Div  Expr Expr
           | Condition Condition
-          -- bonus
+          -- bonus (not supported)
           | ArrayLiteral [Expr]              -- create an array with elements [3, 5, 90+13, 24, 15]
           | ArrayIndex VarName Expr           -- get values of array: y = x[1]
           | StringLiteral String             -- a string "Some random text" 
@@ -220,7 +220,8 @@ arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
 conditionExpr :: Parser Condition
 conditionExpr =  try (parens condition)
-             <|> try (chainl1 (Expr <$> expr) (eq <|> neq <|> gt <|> lt <|> ge <|> le))
+             <|> try (chainl1 (Expr <$> expr)
+                 (try eq <|> try neq <|> try ge <|> try le <|> try gt <|> try lt))
              <|> boolean
 
 
@@ -280,6 +281,16 @@ createASTIO filePath = do
         Right prog -> case typeCheckProgram prog of
             Left typeErr -> Left (TypeError typeErr)
             Right checkedProg -> Right checkedProg
+
+-- parse input -> generate ast -> perform elaboration
+createAST :: String -> Either CompileError Program
+createAST input = case parseResult of
+                       Left err     -> Left (ParseError err)
+                       Right parsed -> case typeCheckProgram parsed of
+                                            Left err  -> Left (TypeError err)
+                                            Right ast -> Right ast
+   where 
+      parseResult = parse program "" input
 
 
 data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  deriving (Show, Eq)
@@ -590,7 +601,7 @@ fromHArray (HArray x) = x
 fromHArray x = x
 
 errorExpected :: HashmapType -> String
-errorExpected varType = ("In expression was not expected " ++ getStringType varType) 
+errorExpected varType = ("Unexpected data type " ++ getStringType varType ++ " in expression!") 
 
 typeCheckingListExpr :: [Expr] -> [HashmapType] -> Hashmap -> Either String HashmapType
 typeCheckingListExpr [x] list hashmap

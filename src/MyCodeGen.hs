@@ -1,5 +1,4 @@
-module MyCodeGen
-    ( codeGen ) where
+module MyCodeGen where
 
 import Sprockell
 import qualified MyParser
@@ -82,49 +81,48 @@ addGlobalVariable env typ name =
 --               CODE GENERATION                --
 --------------------------------------------------
 
-sampleAST :: MyParser.Program
-sampleAST = MyParser.Program
-  [MyParser.Declaration
-    (MyParser.Primitive MyParser.Local MyParser.TInt "x" Nothing),
-     MyParser.Print (MyParser.Var "x")]
+-- sampleAST :: MyParser.Program
+-- sampleAST = MyParser.Program
+--   [MyParser.Declaration
+--     (MyParser.Primitive MyParser.Local MyParser.TInt "x" Nothing),
+--      MyParser.Print (MyParser.Var "x")]
 
-add2numsAST :: MyParser.Program
-add2numsAST = MyParser.Program [
-         MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Const 1))),
-         MyParser.Declaration (MyParser.Primitive MyParser.Global MyParser.TInt "y" (Just (MyParser.Const 2))),
-         MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "z" Nothing),
-         MyParser.Assignment (MyParser.Absolute "z" (MyParser.Add (MyParser.Var "x") (MyParser.Var "y"))),
-         MyParser.Print (MyParser.Var "z")]
+-- add2numsAST :: MyParser.Program
+-- add2numsAST = MyParser.Program [
+--          MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Const 1))),
+--          MyParser.Declaration (MyParser.Primitive MyParser.Global MyParser.TInt "y" (Just (MyParser.Const 2))),
+--          MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "z" Nothing),
+--          MyParser.Assignment (MyParser.Absolute "z" (MyParser.Add (MyParser.Var "x") (MyParser.Var "y"))),
+--          MyParser.Print (MyParser.Var "z")]
 
-areatrAST :: MyParser.Program
-areatrAST = MyParser.Program [
-    MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "a" (Just (MyParser.Const 5))),
-    MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "b" (Just (MyParser.Const 6))),
-    MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "c" (Just (MyParser.Const 7))),
-    MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "s" (Just (MyParser.Add (MyParser.Add (MyParser.Var "a") (MyParser.Var "b")) (MyParser.Var "c")))),
-    MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Sub (MyParser.Sub (MyParser.Var "a") (MyParser.Var "b")) (MyParser.Var "c")))),
-    MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "area" (Just (MyParser.Mult (MyParser.Mult (MyParser.Mult (MyParser.Var "s") (MyParser.Sub (MyParser.Var "s") (MyParser.Var "a"))) (MyParser.Sub (MyParser.Var "s") (MyParser.Var "b"))) (MyParser.Sub (MyParser.Var "s") (MyParser.Var "c"))))),
-    MyParser.Print (MyParser.Var "s")
-    , MyParser.Print (MyParser.Var "x")
-    , MyParser.Print (MyParser.Var "area")
-    , MyParser.Print (MyParser.Char 'a')
-    , MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TChar "d" (Just (MyParser.Char 'z')))
-    , MyParser.Print (MyParser.Var "d")
-    ]
-
-
+-- areatrAST :: MyParser.Program
+-- areatrAST = MyParser.Program [
+--     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "a" (Just (MyParser.Const 5))),
+--     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "b" (Just (MyParser.Const 6))),
+--     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "c" (Just (MyParser.Const 7))),
+--     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "s" (Just (MyParser.Add (MyParser.Add (MyParser.Var "a") (MyParser.Var "b")) (MyParser.Var "c")))),
+--     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Sub (MyParser.Sub (MyParser.Var "a") (MyParser.Var "b")) (MyParser.Var "c")))),
+--     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "area" (Just (MyParser.Mult (MyParser.Mult (MyParser.Mult (MyParser.Var "s") (MyParser.Sub (MyParser.Var "s") (MyParser.Var "a"))) (MyParser.Sub (MyParser.Var "s") (MyParser.Var "b"))) (MyParser.Sub (MyParser.Var "s") (MyParser.Var "c"))))),
+--     MyParser.Print (MyParser.Var "s")
+--     , MyParser.Print (MyParser.Var "x")
+--     , MyParser.Print (MyParser.Var "area")
+--     , MyParser.Print (MyParser.Char 'a')
+--     , MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TChar "d" (Just (MyParser.Char 'z')))
+--     , MyParser.Print (MyParser.Var "d")
+--     ]
 
 
-printMainCode :: Env -> IO ()
-printMainCode env = putStrLn $ "Main Code: " ++ show (mainCode env)
 
--- TODO: REMOVE TESTING MAIN
-main :: IO ()
-main = do
-  let env = compileProgram areatrAST
-  printMainCode env
-  run [mainCode env]
 
+-- printMainCode :: Env -> IO ()
+-- printMainCode env = putStrLn $ "Main Code: " ++ show (mainCode env)
+
+-- -- TODO: REMOVE TESTING MAIN
+-- main :: IO ()
+-- main = do
+--   let env = compileProgram areatrAST
+--   printMainCode env
+--   run [mainCode env]
 
 
 -- compile code for Program Block
@@ -206,7 +204,9 @@ compileDeclaration env decl = case decl of
         newMainCode = mainCode newEnv ++ lockCode
     in newEnv { mainCode = newMainCode }
 
-  --TODO: Array and String
+  -- Arrays and Strings are not supported
+  MyParser.Array _ name _ _ -> error $ "Variable " ++ name ++ " is an array. Arrays are not supported!"
+  MyParser.String name _    -> error $ "Variable " ++ name ++ " is a String. Strings are not suppoerted!"
 
 
 -- compile code for Assignment
@@ -239,7 +239,9 @@ compileAssignment env asgn = case asgn of
           -- not found in shared memory
           Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you declared it?"
 
-  -- TODO: MyParser.Partial
+  -- Partial assignment is not supported
+  MyParser.Partial name _ _ -> error $ "Partial assignment for variable " ++ name ++ " is not supported!"
+  
 
 
 -- compile code for Block
@@ -344,8 +346,8 @@ compileIf env cond thenBlock maybeElseBlock =
   -- generate not cond for conditional branch
   -- if reg false => do then, jump after else
   -- if reg true  => conditional branch to else
-  let reg      = getTmpReg env
-      condCode = genNotCond env cond reg
+  let (reg, newEnv) = getReg env
+      condCode      = genNotCond newEnv cond reg
 
       -- save current state of mainCode
       oldMainCode = mainCode env
@@ -395,8 +397,8 @@ compileWhile env cond whileBlock =
   -- generate cond for conditional branch
   -- if reg false => continue
   -- if reg true  => jump to start of loop
-  let reg      = getTmpReg env
-      condCode = genCond env cond reg
+  let (reg, newEnv) = getReg env
+      condCode      = genCond newEnv cond reg
 
       -- save current state of mainCode
       oldMainCode = mainCode env
@@ -499,7 +501,10 @@ genExpr env expr reg = case expr of
   MyParser.Sub  e1 e2     -> genBinExpr env Sub e1 e2 reg
   -- MyParser.Div  e1 e2 -> genDiv env e1 e2 reg
 
-  -- derived types TODO
+  -- Arrays and Strings are not supported!
+  MyParser.ArrayLiteral _  -> error "Arrays are not supported!"
+  MyParser.ArrayIndex _ _  -> error "Arrays are not supported!"
+  MyParser.StringLiteral _ -> error "Strings are not supported!"
 
 
 -- generate Condition
@@ -546,12 +551,13 @@ genBinExpr env op e1 e2 reg1 =
 -- Eq, Neq, Gt, Lt, Ge, Le, And, Or
 genBinCond :: Env -> Operator -> MyParser.Condition -> MyParser.Condition -> RegAddr -> [Instruction]
 genBinCond env op c1 c2 reg1 =
-  let reg2 = getTmpReg env
+  let newEnv = occupyReg env reg1
+      reg2 = getTmpReg newEnv
   in genCond env c1 reg1
   ++ [Push reg1]
   ++ genCond env c2 reg1
   ++ [Pop reg2]
-  ++ [Compute op reg1 reg2 reg1]
+  ++ [Compute op reg2 reg1 reg1]
 
 -- generate negation of a condition
 -- condition can be 1 or 0 => check if reg0 == cond:
