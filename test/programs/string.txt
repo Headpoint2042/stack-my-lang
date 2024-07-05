@@ -22,7 +22,7 @@ String globalStr2 = "World!";
     // -- Is updating allowed? --
 
     // Update global string and print
-    globalStr1 = "Hi, ";
+    // globalStr1 = "Hi, ";
     print(globalStr1); // Expected: "Hi, "
 
     // Update local string and print

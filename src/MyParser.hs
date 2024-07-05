@@ -52,7 +52,7 @@ data Statement = Declaration Declaration
                deriving (Show)
 
 
-data Scope  = Global | Local deriving (Show)
+data Scope  = Global | Local deriving (Show, Eq)
 data MyType = TInt | TBool | TChar deriving (Show)
 
 -- declaration of variables
@@ -96,11 +96,6 @@ data Condition = Eq Condition Condition
                | Boolean Bool
                | Expr Expr
                deriving (Show)
-
-
-{-
-   compile class: Statement, Declaration, Thread, 
--}
 
 
 languageDef = 
@@ -272,8 +267,9 @@ boolean =  try (Boolean <$> (reserved "true" *> pure True))
 
 data CompileError = ParseError ParseError | TypeError String deriving (Show)
 
-compile :: FilePath -> IO (Either CompileError Program)
-compile filePath = do
+-- renamed from compile to createAST
+createAST :: FilePath -> IO (Either CompileError Program)
+createAST filePath = do
     input <- readFile filePath
     let res = parse program "" input
     return $ case res of
@@ -736,8 +732,7 @@ typeCheckingBlock ((Thread block):xs) hashmap list
    | isLeft either1 = Left (fromLeft "" either1)
    | isLeft either2 = either2
    | isLeft either3 = either3
-   | otherwise = Right ((Thread (fromRight [] either2)) : (fromRight [] either3)) 
-   | otherwise = error ("Unexpected syntax inside threads")
+   | otherwise = Right ((Thread (fromRight [] either2)) : (fromRight [] either3))
    where
       either1 = checkThread block
       either2 = typeCheckingBlock block (newBlockHashmap hashmap) list

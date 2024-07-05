@@ -18,7 +18,6 @@ extra-source-files:
 
 library
   exposed-modules:
-      Extensions
       MyCodeGen
       MyParser
   other-modules:
