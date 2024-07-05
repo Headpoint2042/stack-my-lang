@@ -31,11 +31,13 @@ codeGen n = [
 
 -- Lookup tables for local and global memory
 type VarName = String
+type PrintType = MyParser.MyType
 type MemoryAddress = Int
 type ThreadCount = Int
 
-type LocalLookup = Map VarName MemoryAddress
-type GlobalLookup = Map VarName MemoryAddress
+-- PrintType will be used only for printing (to indicate how the variable should be printed)
+type LocalLookup = Map VarName (MemoryAddress, PrintType)
+type GlobalLookup = Map VarName (MemoryAddress, PrintType)
 
 
 data Env = Env { nextLocalAddr  :: MemoryAddress    -- local addresses: 36
@@ -45,7 +47,7 @@ data Env = Env { nextLocalAddr  :: MemoryAddress    -- local addresses: 36
                , freeRegs       :: [RegAddr]        -- list of available registers
                , mainCode       :: [Instruction]    -- code for the main thread
                , threadsCode    :: [[Instruction]]  -- code for new threads
-               , threadCounter  :: ThreadCount
+               , threadCounter  :: ThreadCount      -- counter used for creating names of signals
                } deriving (Show)
 
 initialEnv :: Env
@@ -60,18 +62,18 @@ initialEnv = Env { nextLocalAddr  = 0
                  }
 
 
-addLocalVariable :: VarName -> Env -> (MemoryAddress, Env)
-addLocalVariable name env =
+addLocalVariable :: Env -> PrintType -> VarName -> (MemoryAddress, Env)
+addLocalVariable env typ name =
   let addr = nextLocalAddr env
-      newLocalLookup = Map.insert name addr (localLookup env)
+      newLocalLookup = Map.insert name (addr, typ) (localLookup env)
       newEnv = env { nextLocalAddr = addr + 1, localLookup = newLocalLookup }
   in (addr, newEnv)
 
 
-addGlobalVariable :: VarName -> Env -> (MemoryAddress, Env)
-addGlobalVariable name env =
+addGlobalVariable :: Env -> PrintType -> VarName -> (MemoryAddress, Env)
+addGlobalVariable env typ name =
   let addr = nextGlobalAddr env
-      newGlobalLookup = Map.insert name addr (globalLookup env)
+      newGlobalLookup = Map.insert name (addr, typ) (globalLookup env)
       newEnv = env { nextGlobalAddr = addr + 1, globalLookup = newGlobalLookup }
   in (addr, newEnv)
 
@@ -81,21 +83,21 @@ addGlobalVariable name env =
 --------------------------------------------------
 
 sampleAST :: MyParser.Program
-sampleAST = MyParser.Program 
-  [MyParser.Declaration 
+sampleAST = MyParser.Program
+  [MyParser.Declaration
     (MyParser.Primitive MyParser.Local MyParser.TInt "x" Nothing),
      MyParser.Print (MyParser.Var "x")]
 
-add2nums :: MyParser.Program
-add2nums = MyParser.Program [
+add2numsAST :: MyParser.Program
+add2numsAST = MyParser.Program [
          MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Const 1))),
          MyParser.Declaration (MyParser.Primitive MyParser.Global MyParser.TInt "y" (Just (MyParser.Const 2))),
          MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "z" Nothing),
          MyParser.Assignment (MyParser.Absolute "z" (MyParser.Add (MyParser.Var "x") (MyParser.Var "y"))),
          MyParser.Print (MyParser.Var "z")]
 
-areatr :: MyParser.Program
-areatr = MyParser.Program [
+areatrAST :: MyParser.Program
+areatrAST = MyParser.Program [
     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "a" (Just (MyParser.Const 5))),
     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "b" (Just (MyParser.Const 6))),
     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "c" (Just (MyParser.Const 7))),
@@ -105,6 +107,9 @@ areatr = MyParser.Program [
     MyParser.Print (MyParser.Var "s")
     , MyParser.Print (MyParser.Var "x")
     , MyParser.Print (MyParser.Var "area")
+    , MyParser.Print (MyParser.Char 'a')
+    , MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TChar "d" (Just (MyParser.Char 'z')))
+    , MyParser.Print (MyParser.Var "d")
     ]
 
 
@@ -116,7 +121,7 @@ printMainCode env = putStrLn $ "Main Code: " ++ show (mainCode env)
 -- TODO: REMOVE TESTING MAIN
 main :: IO ()
 main = do
-  let env = compileProgram areatr
+  let env = compileProgram areatrAST
   printMainCode env
   run [mainCode env]
 
@@ -129,145 +134,112 @@ compileProgram (MyParser.Program programBlock) =
   in env { mainCode = mainCode env ++ [EndProg] }
 
 
--- class for compilable data types of the EDSL
--- compilable is a class that modifies  the Env ? TODO rethink this comment
-class Compilable a where
-  -- return new Env that contains updated lookups, mainCode, and threadsCode
-  compile :: Env -> a -> Env
-
-
 -- compile code for Statement
-instance Compilable MyParser.Statement where
-  compile env stmt = case stmt of
+compileStmt :: Env -> MyParser.Statement -> Env
+compileStmt env stmt = case stmt of
+  -- call special compile functions
+  MyParser.Declaration decl            -> compileDeclaration env decl
+  MyParser.Assignment  asgn            -> compileAssignment  env asgn
 
-    -- call compile on instances of Compilable
-    MyParser.Declaration decl            -> compile env decl
-    MyParser.Assignment  asgn            -> compile env asgn
+  MyParser.Block       block           -> compileBlock  env block
+  MyParser.Print       expr            -> compilePrint  env expr
+  MyParser.Lock        name            -> compileLock   env name
+  MyParser.Unlock      name            -> compileUnlock env name
 
-    -- call special compile functions
-    MyParser.Block       block           -> compileBlock env block
-    MyParser.Print       expr            -> compilePrint  env expr
-    MyParser.Lock        name            -> compileLock   env name
-    MyParser.Unlock      name            -> compileUnlock env name
-
-    MyParser.If cond thenBlock elseBlock -> compileIf     env cond thenBlock elseBlock
-    MyParser.While cond whileBlock       -> compileWhile  env cond whileBlock
-    MyParser.Thread threadBlock          -> compileThread env threadBlock
+  MyParser.If cond thenBlock elseBlock -> compileIf     env cond thenBlock elseBlock
+  MyParser.While cond whileBlock       -> compileWhile  env cond whileBlock
+  MyParser.Thread threadBlock          -> compileThread env threadBlock
 
 
 -- compile code for Declaration
-instance Compilable MyParser.Declaration where
-  compile env decl = case decl of
+compileDeclaration :: Env -> MyParser.Declaration -> Env
+compileDeclaration env decl = case decl of
 
-    -- Primitive
-    MyParser.Primitive scope typ name maybeExpr ->
-      -- get addr and newEnv
-      let (addr, newEnv) = if scope == MyParser.Global
-                           then addGlobalVariable name env
-                           else addLocalVariable  name env
+  -- Primitive
+  MyParser.Primitive scope typ name maybeExpr ->
+    -- get addr and newEnv
+    let (addr, newEnv) = if scope == MyParser.Global
+                          then addGlobalVariable env typ name
+                          else addLocalVariable  env typ name
 
-          -- reg will be used to store the value of the variable (expr or default)
-          reg = getTmpReg env
-          declCode = case maybeExpr of
+        -- reg will be used to store the value of the variable (expr or default)
+        reg = getTmpReg env
+        declCode = case maybeExpr of
 
-            -- evaluate expr and store in memory at addr
-            Just expr -> let exprCode = genExpr env expr reg
-                         in if scope == MyParser.Global
-                            then exprCode ++ [writeShMem reg addr]
-                            else exprCode ++ [storeAddr reg addr]
+          -- evaluate expr and store in memory at addr
+          Just expr ->  let exprCode = genExpr env expr reg
+                        in if scope == MyParser.Global
+                          then exprCode ++ [writeShMem reg addr]
+                          else exprCode ++ [storeAddr reg addr]
 
-            -- store default value depending on type at memory addr
-            Nothing   -> case typ of
-              -- default: 0
-              MyParser.TInt   -> let defaultCode = [loadI 0 reg]
-                                 in if scope == MyParser.Global
-                                    then defaultCode ++ [writeShMem reg addr]
-                                    else defaultCode ++ [storeAddr reg addr]
+          -- store default value depending on type at memory addr
+          Nothing   -> case typ of
+            -- default: 0
+            MyParser.TInt   ->  let defaultCode = [loadI 0 reg]
+                                in if scope == MyParser.Global
+                                  then defaultCode ++ [writeShMem reg addr]
+                                  else defaultCode ++ [storeAddr reg addr]
 
-              -- default: 0 = False
-              MyParser.TBool  -> let defaultCode = [loadI 0 reg]
-                                 in if scope == MyParser.Global
-                                    then defaultCode ++ [writeShMem reg addr]
-                                    else defaultCode ++ [storeAddr reg addr]
+            -- default: 0 = False
+            MyParser.TBool  ->  let defaultCode = [loadI 0 reg]
+                                in if scope == MyParser.Global
+                                  then defaultCode ++ [writeShMem reg addr]
+                                  else defaultCode ++ [storeAddr reg addr]
 
-              -- default: 32 = ' '; instead of 32 we can use (fromInteger $ ord ' ')
-              MyParser.TChar  -> let defaultCode = [loadI 32 reg]
-                                 in if scope == MyParser.Global
-                                    then defaultCode ++ [writeShMem reg addr]
-                                    else defaultCode ++ [storeAddr reg addr]
+            -- default: 32 = ' '; instead of 32 we can use (fromInteger $ ord ' ')
+            MyParser.TChar  ->  let defaultCode = [loadI 32 reg]
+                                in if scope == MyParser.Global
+                                  then defaultCode ++ [writeShMem reg addr]
+                                  else defaultCode ++ [storeAddr reg addr]
 
-          -- update main code
-          newMainCode = mainCode newEnv ++ declCode
-
-      in newEnv { mainCode = newMainCode }
+        -- update main code
+        newMainCode = mainCode newEnv ++ declCode
+    in newEnv { mainCode = newMainCode }
 
     -- TLock
-    MyParser.TLock name ->
-      -- locks are stored in shared memory
-      let (addr, newEnv) = addGlobalVariable name env
-          reg = getTmpReg env
-          lockCode = [loadI 0 reg, storeAddr reg addr]
-          newMainCode = mainCode newEnv ++ lockCode
-      in newEnv { mainCode = newMainCode }
+  MyParser.TLock name ->
+    -- locks are stored in shared memory
+    -- locks are not allowed to be printed, but we still need a placeholder for PrintType
+    let (addr, newEnv) = addGlobalVariable env MyParser.TInt name
+        reg = getTmpReg env
+        lockCode = [loadI 0 reg, storeAddr reg addr]
+        newMainCode = mainCode newEnv ++ lockCode
+    in newEnv { mainCode = newMainCode }
 
-    --TODO: Array and String
+  --TODO: Array and String
 
 
 -- compile code for Assignment
-instance Compilable MyParser.Assignment where
-  compile env asgn = case asgn of
+compileAssignment :: Env -> MyParser.Assignment -> Env
+compileAssignment env asgn = case asgn of
 
-    -- Absolute
-    MyParser.Absolute name expr ->
-      -- search for variable in local memory
-      case Map.lookup name (localLookup env) of
-        -- variable found in local lookup
-        Just addr ->  let reg = getTmpReg env
-                          exprCode = genExpr env expr reg
-                          storeCode = exprCode ++ [storeAddr reg addr]
-                          newMainCode = mainCode env ++ storeCode
-                      in env { mainCode = newMainCode }
+  -- Absolute
+  MyParser.Absolute name expr ->
+    -- search for variable in local memory
+    case Map.lookup name (localLookup env) of
+      -- variable found in local lookup
+      Just (addr, _) -> let reg = getTmpReg env
+                            exprCode = genExpr env expr reg
+                            storeCode = exprCode ++ [storeAddr reg addr]
+                            newMainCode = mainCode env ++ storeCode
+                        in env { mainCode = newMainCode }
 
-        -- variable not found in local lookup
-        Nothing   ->
-          -- search for variable in shared memory
-          case Map.lookup name (globalLookup env) of
+      -- variable not found in local lookup
+      Nothing   ->
+        -- search for variable in shared memory
+        case Map.lookup name (globalLookup env) of
 
-            -- found
-            Just addr -> let reg = getTmpReg env
-                             exprCode = genExpr env expr reg
-                             storeCode = exprCode ++ [writeShMem reg addr]
-                             newMainCode = mainCode env ++ storeCode
-                          in env { mainCode = newMainCode }
+          -- found
+          Just (addr, _) -> let reg = getTmpReg env
+                                exprCode = genExpr env expr reg
+                                storeCode = exprCode ++ [writeShMem reg addr]
+                                newMainCode = mainCode env ++ storeCode
+                            in env { mainCode = newMainCode }
 
-            -- not found in shared memory
-            Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you declared it?"
+          -- not found in shared memory
+          Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you declared it?"
 
-    -- TODO: MyParser.Partial
-
-
--- compile code for Block
--- when leaving a block, we need to reset some values to their 
--- state before entering the block: nextLocalAddr, localLookup, freeRegs
--- remaining values are passed from within the block
--- instance Compilable MyParser.Block where
---   compile env (MyParser.Block stmts) =
-
---     -- save states of env before entering block
---     let oldLocalAddr    = nextLocalAddr env
---         oldLocalLookup  = localLookup   env
---         oldFreeRegs     = freeRegs      env
-
---         -- compile the list of statements
---         blockEnv = compileStatements env stmts
-
---         -- restore states of env after exiting block
---         newEnv = blockEnv { nextLocalAddr = oldLocalAddr
---                           , localLookup   = oldLocalLookup
---                           , freeRegs      = oldFreeRegs
---                           }
---     -- return new env
---     in newEnv
+  -- TODO: MyParser.Partial
 
 
 -- compile code for Block
@@ -296,25 +268,46 @@ compileBlock env stmts =
 
 -- compile all statements and pass the new env between them
 compileStatements :: Env -> [MyParser.Statement] -> Env
-compileStatements = foldl compile
+compileStatements = foldl compileStmt
 -- compileStatements env [] = env
 -- compileStatements env (stmt:stmts) =
 --   let newEnv = compile env stmt
 --   in compileStatements newEnv stmts
 
 
--- compile code for Print
 compilePrint :: Env -> MyParser.Expr -> Env
 compilePrint env expr =
-    let reg = getTmpReg env
-        exprCode    = genExpr env expr reg
-        printCode   = exprCode ++ [WriteInstr reg numberIO]
-        newMainCode = mainCode env ++ printCode
-    in env { mainCode = newMainCode }
+  -- reg1 - used for printing; reg2 - used for intermediate calculations in printSource
+  let (reg1, newEnv) = getReg env
+      reg2           = getTmpReg newEnv
+      exprType       = exprPrintType env expr
+      exprCode       = genExpr env expr reg1    -- pass env here -> use freeRegs of env
 
--- get exprType
--- exprType :: Env -> MyParser.Expr -> MyParser.MyType
--- exprType env expr =
+      printCode = case exprType of
+        MyParser.TInt  -> [printConst reg1]
+        MyParser.TChar -> printSource reg2
+                          ++ [printChar reg1]
+                          ++ printN reg1
+      
+      newMainCode = mainCode env ++ exprCode ++ printCode
+  in env { mainCode = newMainCode }
+
+
+-- get type of expr for printing (TInt or TChar; TBool is printed as TInt)
+exprPrintType :: Env -> MyParser.Expr -> MyParser.MyType
+exprPrintType _   (MyParser.Char _) = MyParser.TChar
+exprPrintType env (MyParser.Var name) =
+  -- search in local memory
+  case Map.lookup name (localLookup env) of
+    Just (_, typ) -> if typ == MyParser.TChar then typ else MyParser.TInt
+    Nothing       ->
+      -- search in shMem
+      case Map.lookup name (globalLookup env) of
+        Just (_, typ) -> typ
+        Nothing       -> error $ "Variable " ++ name ++ " not found! Did you declare it?"
+-- all other expr constructors
+exprPrintType _ _ = MyParser.TInt
+
 
 -- compile code for Lock
 compileLock :: Env -> MyParser.VarName -> Env
@@ -323,9 +316,9 @@ compileLock env name =
     -- searcch for lock in globalLookup
     case Map.lookup name (globalLookup env) of
       -- lock found
-      Just addr  -> let lockCode    = getLock  env addr
-                        newMainCode = mainCode env ++ lockCode
-                    in env { mainCode = newMainCode }
+      Just (addr, _) -> let lockCode    = getLock  env addr
+                            newMainCode = mainCode env ++ lockCode
+                        in env { mainCode = newMainCode }
       -- lock not found
       Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
 
@@ -337,9 +330,9 @@ compileUnlock env name =
     -- search for lock in globalLookup
     case Map.lookup name (globalLookup env) of
       -- found
-      Just addr  -> let unlockCode  = releaseLock addr
-                        newMainCode = mainCode env ++ unlockCode
-                    in env { mainCode = newMainCode }
+      Just (addr, _) -> let unlockCode  = releaseLock addr
+                            newMainCode = mainCode env ++ unlockCode
+                        in env { mainCode = newMainCode }
       -- not found
       Nothing    -> error $ "Lock " ++ name ++ " not found! Are you sure you declared it?"
 
@@ -445,7 +438,8 @@ compileThread env threadBlock =
       updatedEnv = env { threadCounter = tCount + 1 }
 
       -- add signal to shared mem
-      (signalAddr, signalEnv) = addGlobalVariable signalName updatedEnv
+      -- signal is not allowed to be printed, but we need a placeholder for PrintType
+      (signalAddr, signalEnv) = addGlobalVariable updatedEnv MyParser.TInt signalName
 
       -- reset env for thread {block}
       threadEnv = initialEnv { nextGlobalAddr = nextGlobalAddr signalEnv
@@ -589,16 +583,16 @@ getReg env = case freeRegs env of
   []       -> error "No free registers!"
   (r:rs)   -> (r, env { freeRegs = rs })
 
+-- occupy a register
+occupyReg :: Env -> RegAddr -> Env
+occupyReg env reg =
+  let newFreeRegs = filter (/= reg) (freeRegs env)
+  in env { freeRegs = newFreeRegs }
+
 -- TODO: remove this if obsolete
 -- release a register -> adds it to the list of available registers
 releaseReg :: RegAddr -> Env -> Env
 releaseReg reg env = env { freeRegs = reg : freeRegs env }
-
--- occupy a register
-occupyReg :: Env -> RegAddr -> Env
-occupyReg env reg = 
-  let newFreeRegs = filter (/= reg) (freeRegs env)
-  in env { freeRegs = newFreeRegs }
 
 -- sometimes we need to get and release a register in the same "block" of instructions
 -- this allowes for easier use of temporary registers
@@ -626,7 +620,7 @@ loadI val = Load (ImmValue $ fromInteger val)
 load :: RegAddr -> RegAddr -> Instruction
 load reg1 = Load (IndAddr reg1)
 
--- load value from MemAddr into reg 
+-- load value from MemAddr into reg
 loadAddr :: MemAddr -> RegAddr -> Instruction
 loadAddr addr = Load (DirAddr addr)
 
@@ -643,11 +637,11 @@ loadAI env reg1 offset reg3 =
 loadVar :: Env -> VarName -> RegAddr -> [Instruction]
 loadVar env name reg = case Map.lookup name (localLookup env) of
   -- load from local memory
-  Just addr -> [loadAddr addr reg]
-  Nothing   -> case Map.lookup name (globalLookup env) of
+  Just (addr, _) -> [loadAddr addr reg]
+  Nothing        -> case Map.lookup name (globalLookup env) of
     -- load from shMem
-    Just addr -> readShMem addr reg
-    Nothing   -> error $ "Variable " ++ name ++ " not found! Are you sure you defined it?"
+    Just (addr, _) -> readShMem addr reg
+    Nothing        -> error $ "Variable " ++ name ++ " not found! Are you sure you defined it?"
 
 -- copy a value from reg1 to reg2
 copyReg :: RegAddr -> RegAddr -> Instruction
@@ -705,3 +699,46 @@ jumpRel addr = Jump (Rel addr)
 -- branch relative if reg != 0
 branchRel :: RegAddr -> CodeAddr -> Instruction
 branchRel reg addr = Branch reg (Rel addr)
+
+----------------------
+--     Printing     --
+----------------------
+
+-- print a number from reg into numberIO
+printConst :: RegAddr -> Instruction
+printConst reg = WriteInstr reg numberIO
+
+-- print a character from reg
+printChar :: RegAddr -> Instruction
+printChar reg = WriteInstr reg charIO
+
+-- print a char literal
+-- reg will be used to store the char and print it
+printCharLit :: Char -> RegAddr -> [Instruction]
+printCharLit c reg =
+  loadI (toInteger $ ord c) reg : [printChar reg]
+
+-- print a string literal
+-- reg will be used for storing each char of string literal and printing it
+printStrLit :: String -> RegAddr -> [Instruction]
+printStrLit str reg = concatMap (`printCharLit` reg) str
+
+-- prints a new line (ord '\n' = 10)
+-- reg will be used to store value of '\n' and print it
+printN :: RegAddr -> [Instruction]
+printN = printCharLit '\n'
+
+-- prints "Sprockell n says "
+-- reg is used for intermediate calculations
+printSource :: RegAddr -> [Instruction]
+printSource reg =
+  printStrLit "Sprockell " reg
+  ++ printDigChar regSprID reg
+  ++ printStrLit " says " reg
+
+-- prints a digit from reg1 as a char to charIO; reg2 is used for calculations
+printDigChar :: RegAddr -> RegAddr -> [Instruction]
+printDigChar reg1 reg2 =
+  [loadI (toInteger $ ord '0') reg2]
+  ++ [Compute Add reg1 reg2 reg2]
+  ++ [printChar reg2]

@@ -53,7 +53,7 @@ data Statement = Declaration Declaration
 
 
 data Scope  = Global | Local deriving (Show, Eq)
-data MyType = TInt | TBool | TChar deriving (Show)
+data MyType = TInt | TBool | TChar deriving (Show, Eq)
 
 -- declaration of variables
 data Declaration = Primitive Scope MyType VarName (Maybe Expr)
@@ -267,14 +267,17 @@ boolean =  try (Boolean <$> (reserved "true" *> pure True))
 
 data CompileError = ParseError ParseError | TypeError String deriving (Show)
 
--- renamed from compile to createAST
-createAST :: FilePath -> IO (Either CompileError Program)
-createAST filePath = do
+-- parse program "" input -> parse from input
+-- typeCheckProgram prog  -> perform type check on AST and return new AST
+
+-- create AST from IO for testing purposes
+createASTIO :: FilePath -> IO (Either CompileError Program)
+createASTIO filePath = do
     input <- readFile filePath
     let res = parse program "" input
     return $ case res of
         Left err -> Left (ParseError err)
-        Right prog -> case typeCheckingProgram prog of
+        Right prog -> case typeCheckProgram prog of
             Left typeErr -> Left (TypeError typeErr)
             Right checkedProg -> Right checkedProg
 
@@ -283,8 +286,8 @@ data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  
 data Hashmap = Scope [(HashmapType, VarName)] [Hashmap] deriving (Show)
 
 
-typeCheckingProgram :: Program -> Either String Program
-typeCheckingProgram (Program block)
+typeCheckProgram :: Program -> Either String Program
+typeCheckProgram (Program block)
    | isLeft either1 = Left (fromLeft "" either1)
    | isLeft either2 = Left (fromLeft "" either2)
    | otherwise = Right (Program (fromRight [] either2))
