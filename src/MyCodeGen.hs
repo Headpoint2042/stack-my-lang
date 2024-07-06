@@ -464,7 +464,8 @@ compileThread env threadBlock =
       tCode = jailCode ++ mainCode compiledThreadEnv ++ [EndProg]
 
       -- update threadsCode in env (or updatedEnv)
-      newThreadsCode = tCode : threadsCode env
+      -- newThreadsCode = tCode : threadsCode env
+      newThreadsCode = threadsCode env ++ [tCode] ++ threadsCode compiledThreadEnv
 
       -- create code to testAndSet the signal to 1 in shMem
       -- we will not read reg but we still need to receive from TestAndSet

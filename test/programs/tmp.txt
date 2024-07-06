@@ -1,16 +1,16 @@
-global int x1;
-global int x2;
-global int x3;
-global int x4;
-global int x5;
-global int x6;
-global int x7;
-global int x8;
-print(1);
-print(x8);
-global int x9;
-print(2);
-print(x9);
-global int x10;
-print(3);
-print(x10);
+Lock l1;
+
+thread {
+    l1.lock;
+    print(101);
+    l1.unlock;
+}
+
+int x;
+while (x < 1) {
+    x = x + 1;
+}
+
+l1.lock;
+print(202);
+l1.unlock;
