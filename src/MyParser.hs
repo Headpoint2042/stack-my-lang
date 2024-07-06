@@ -32,7 +32,7 @@ import Data.Either
 ------------------------------------------------
 
 -- data Program = Program Block deriving (Show)
-newtype Program = Program Block deriving (Show)
+newtype Program = Program Block deriving (Show, Eq)
 
 -- data Scope, between the {}
 type Block = [Statement]
@@ -49,7 +49,7 @@ data Statement = Declaration Declaration
                | Lock        VarName
                | Unlock      VarName
                | Block       Block
-               deriving (Show)
+               deriving (Show, Eq)
 
 
 data Scope  = Global | Local deriving (Show, Eq)
@@ -60,12 +60,12 @@ data Declaration = Primitive Scope MyType VarName (Maybe Expr)
                  | TLock     VarName            -- always global
                  | Array     MyType VarName ArrSize (Maybe Expr)
                  | String    VarName Expr       -- Expr must be StringLiteral; String is immutable
-                 deriving (Show)
+                 deriving (Show, Eq)
 
 -- assignment of variables
 data Assignment = Absolute VarName Expr            -- includes cases where x = y, x = y - 3 ...
                 | Partial  VarName Expr Expr       -- important for array value changing at index:  a[1] = 24
-                deriving (Show)
+                deriving (Show, Eq)
 
 -- Expr is rhs of =
 data Expr = Const Integer
@@ -80,7 +80,7 @@ data Expr = Const Integer
           | ArrayLiteral [Expr]              -- create an array with elements [3, 5, 90+13, 24, 15]
           | ArrayIndex VarName Expr           -- get values of array: y = x[1]
           | StringLiteral String             -- a string "Some random text" 
-          deriving (Show)
+          deriving (Show, Eq)
 
 
 -- 1 == 2 == False works like (1 == 2) == False -> False == False -> True
@@ -95,7 +95,7 @@ data Condition = Eq Condition Condition
                | Not Condition
                | Boolean Bool
                | Expr Expr
-               deriving (Show)
+               deriving (Show, Eq)
 
 
 languageDef = 
@@ -220,9 +220,9 @@ arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
 conditionExpr :: Parser Condition
 conditionExpr =  try (parens condition)
-             <|> try (chainl1 (Expr <$> expr)
+             <|> try boolean
+             <|> (chainl1 (Expr <$> expr)
                  (try eq <|> try neq <|> try ge <|> try le <|> try gt <|> try lt))
-             <|> boolean
 
 
 condition :: Parser Condition
