@@ -52,8 +52,8 @@ data Statement = Declaration Declaration
                deriving (Show)
 
 
-data Scope  = Global | Local deriving (Show)
-data MyType = TInt | TBool | TChar deriving (Show)
+data Scope  = Global | Local deriving (Show, Eq)
+data MyType = TInt | TBool | TChar deriving (Show, Eq)
 
 -- declaration of variables
 data Declaration = Primitive Scope MyType VarName (Maybe Expr)
@@ -70,13 +70,13 @@ data Assignment = Absolute VarName Expr            -- includes cases where x = y
 -- Expr is rhs of =
 data Expr = Const Integer
           | Char Char 
-          | Var String
-          | Add Expr Expr
+          | Var  String
+          | Add  Expr Expr
           | Mult Expr Expr
-          | Sub Expr Expr
-          | Div Expr Expr
+          | Sub  Expr Expr
+          | Div  Expr Expr
           | Condition Condition
-          -- bonus
+          -- bonus (not supported)
           | ArrayLiteral [Expr]              -- create an array with elements [3, 5, 90+13, 24, 15]
           | ArrayIndex VarName Expr           -- get values of array: y = x[1]
           | StringLiteral String             -- a string "Some random text" 
@@ -96,11 +96,6 @@ data Condition = Eq Condition Condition
                | Boolean Bool
                | Expr Expr
                deriving (Show)
-
-
-{-
-   compile class: Statement, Declaration, Fork, 
--}
 
 
 languageDef = 
@@ -225,7 +220,8 @@ arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
 conditionExpr :: Parser Condition
 conditionExpr =  try (parens condition)
-             <|> try (chainl1 (Expr <$> expr) (eq <|> neq <|> gt <|> lt <|> ge <|> le))
+             <|> try (chainl1 (Expr <$> expr)
+                 (try eq <|> try neq <|> try ge <|> try le <|> try gt <|> try lt))
              <|> boolean
 
 
@@ -271,23 +267,37 @@ boolean =  try (Boolean <$> (reserved "true" *> pure True))
 
 data CompileError = ParseError ParseError | TypeError String deriving (Show)
 
-compile :: FilePath -> IO (Either CompileError Program)
-compile filePath = do
+-- parse program "" input -> parse from input
+-- typeCheckProgram prog  -> perform type check on AST and return new AST
+
+-- create AST from IO for testing purposes
+createASTIO :: FilePath -> IO (Either CompileError Program)
+createASTIO filePath = do
     input <- readFile filePath
     let res = parse program "" input
     return $ case res of
         Left err -> Left (ParseError err)
-        Right prog -> case typeCheckingProgram prog of
+        Right prog -> case typeCheckProgram prog of
             Left typeErr -> Left (TypeError typeErr)
             Right checkedProg -> Right checkedProg
+
+-- parse input -> generate ast -> perform elaboration
+createAST :: String -> Either CompileError Program
+createAST input = case parseResult of
+                       Left err     -> Left (ParseError err)
+                       Right parsed -> case typeCheckProgram parsed of
+                                            Left err  -> Left (TypeError err)
+                                            Right ast -> Right ast
+   where 
+      parseResult = parse program "" input
 
 
 data HashmapType = HInt | HBool | HChar | HLock | HString | HArray HashmapType  deriving (Show, Eq)
 data Hashmap = Scope [(HashmapType, VarName)] [Hashmap] deriving (Show)
 
 
-typeCheckingProgram :: Program -> Either String Program
-typeCheckingProgram (Program block)
+typeCheckProgram :: Program -> Either String Program
+typeCheckProgram (Program block)
    | isLeft either1 = Left (fromLeft "" either1)
    | isLeft either2 = Left (fromLeft "" either2)
    | otherwise = Right (Program (fromRight [] either2))
@@ -596,7 +606,7 @@ fromHArray x = x
 
 -- Helper function to return the appropriate error message when a variable has a different data type than what was expected
 errorExpected :: HashmapType -> String
-errorExpected varType = ("In expression was not expected " ++ getStringType varType) 
+errorExpected varType = ("Unexpected data type " ++ getStringType varType ++ " in expression!") 
 
 -- This function is important for the array listerals ([2, 3, x+2, y-5]), so that the expressions inside of the array all have the correct data type
 -- If something is not right, then return Left error
@@ -742,8 +752,7 @@ typeCheckingBlock ((Thread block):xs) hashmap list
    | isLeft either1 = Left (fromLeft "" either1)
    | isLeft either2 = either2
    | isLeft either3 = either3
-   | otherwise = Right ((Thread (fromRight [] either2)) : (fromRight [] either3)) 
-   | otherwise = error ("Unexpected syntax inside threads")
+   | otherwise = Right ((Thread (fromRight [] either2)) : (fromRight [] either3))
    where
       either1 = checkThread block
       either2 = typeCheckingBlock block (newBlockHashmap hashmap) list

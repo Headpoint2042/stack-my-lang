@@ -10,25 +10,25 @@ bool globalBool = true;
 
     // If-else statement
     if (localInt < 10) {
-        print("localInt is less than 10");
+        print(1);
     } else {
-        print("localInt is not less than 10");
+        print(2);
     }
 
     // If statement with boolean condition
     if (globalBool) {
-        print("globalBool is true");
+        print(3);
     }
 
     // Nested if-else statement
     if (localInt == 5) {
         if (globalInt > 10) {
-            print("globalInt is greater than 10");
+            print(4);
         } else {
-            print("globalInt is not greater than 10");
+            print(5);
         }
     } else {
-        print("localInt is not 5");
+        print(6);
     }
 
     // While loop
@@ -39,7 +39,7 @@ bool globalBool = true;
 
     // While loop with boolean condition
     while (localBool == false) {
-        print("localBool is false");
+        print(7);
         localBool = true;
     }
 
@@ -54,5 +54,5 @@ bool globalBool = true;
         counter = counter + 1;
     }
 
-    print("Finished checking if and while statements.");
+    print(999);
 }

@@ -1,20 +1,48 @@
 module Main where
 
-import MyParser (parseMyLang)
-import MyCodeGen (codeGen)
-import Sprockell (run, Instruction)
+import MyParser
+import MyCodeGen
+import Sprockell
+
+import System.Environment
 
 -- Compiles a number into a spril program producing all fibonacci numbers below the number
 -- Compilation might fail
-compile :: String -> Either String [Instruction]
-compile txt = do
-    ast <- parseMyLang txt
-    pure $ codeGen ast
+-- compile :: String -> Either String [Instruction]
+-- compile txt = do
+--     ast <- parseMyLang txt
+--     pure $ codeGen ast
 
 -- Gets a number and runs the resulting spril program of compilation succeeds
+-- main :: IO ()
+-- main = do
+--     txt <- getLine
+--     putStrLn txt
+    -- case compile txt of
+    --     (Left err) -> fail err
+    --     (Right spril) -> run [spril]
+
+
+compile :: FilePath -> IO ()
+compile filePath = do
+    input <- readFile filePath
+    let output = createAST input
+    case output of
+        -- error
+        Left  err -> do
+            putStrLn $ show err
+
+        -- compile ast
+        Right ast -> do
+            let env = compileProgram ast
+            let threads = mainCode env : threadsCode env
+            putStrLn $ "Main Code: " ++ show (mainCode env)
+            run threads
+
+
 main :: IO ()
 main = do
-    txt <- getLine
-    case compile txt of
-        (Left err) -> fail err
-        (Right spril) -> run [spril]
+    args <- getArgs
+    case args of
+        [filePath] -> compile filePath
+        []         -> error $ "Please give a file path something!"

@@ -6,8 +6,8 @@ int tmp = x;
 x = y;
 y = tmp;
 
-print("Val of x:");
+// print("Val of x:");
 print(x);
 
-print("Val of y:");
+// print("Val of y:");
 print(y);
