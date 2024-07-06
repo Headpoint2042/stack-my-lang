@@ -265,7 +265,6 @@ parseNot :: Parser Condition
 parseNot = Not <$> (symbol "!" *> parens condition)
 
 boolean :: Parser Condition
--- boolean = Boolean <$> (try ((reserved "true") *> pure True) <|> (reserved "false" *> pure False))
 boolean =  try (Boolean <$> (reserved "true" *> pure True))
        <|> Boolean <$> (reserved "false" *> pure False)
 
@@ -306,7 +305,7 @@ changeType TBool = HBool
 
 
 
--- Check declaration arrays size is the same
+-- Checks if the array declaration is correct, checking the size at the same, otherwise return the error
 checkArraySize :: Declaration -> Either String Bool
 checkArraySize (Array _ _ size (Just (ArrayLiteral array))) 
    | size == 0 = Left ("Cannot give array size 0")
@@ -321,7 +320,8 @@ checkArraySize _ = Right True
 
 
 
-
+-- The function checks whever inside the thread block were declared things that should not have been declared.
+-- In case inside the block were declared thing that should not have been declared then return an error
 checkThread :: [Statement] -> Either String Bool
 checkThread [] = Right True
 checkThread ((Declaration (TLock _)):xs) = Left ("Cannot declare Lock inside a thread block")
@@ -343,6 +343,8 @@ checkThread ((Block block):xs) = case checkThread block of
                                     Right prog -> checkThread xs
 checkThread (_:xs) = checkThread xs
 
+-- The function checks whever inside the while block were declared things that should not have been declared.
+-- In case inside the block were declared thing that should not have been declaredm then return an error
 checkWhile :: [Statement] -> Either String Bool
 checkWhile [] = Right True
 checkWhile ((Declaration (TLock _):xs)) = Left ("Cannot declare Lock inside a while block")
@@ -365,13 +367,15 @@ checkWhile ((While _ block):xs) = case checkWhile block of
                                     Right prog -> checkWhile xs
 checkWhile (_:xs) = checkWhile xs
 
+-- Checks if the string declaration is correct, otherwise return the error
 checkStringDecl :: Declaration -> Either String Bool
 checkStringDecl (String name (StringLiteral _)) = Right True
 checkStringDecl (String _ _) = Left ("Did not declare the string correctly")
 checkStringDecl _ = Right True
 
 
--- 1. check redeclaration
+-- The function checks there are redeclaration of the same variable within the same scope
+-- If there are, then return Left error
 checkReDeclaration :: [Statement] -> [String] -> Either String Bool
 checkReDeclaration [] _ = Right True
 checkReDeclaration ((Declaration (Primitive _ _ name _)):xs) list 
@@ -407,6 +411,8 @@ checkReDeclaration ((While cond block):xs) list = case (checkReDeclaration block
 checkReDeclaration (_:xs) list = (checkReDeclaration xs list)
 
 
+-- This is the type checking function for expressions that checks if the expressions inside it are logically correct and if it is correct then return the data type it produces
+-- Otherwise if stumbles upon some errors, then return that error
 typeCheckingExpr :: Expr -> [HashmapType] -> Hashmap -> Either String HashmapType
 typeCheckingExpr (Const _) list hashmap 
    | elem HInt list = Right HInt
@@ -420,9 +426,6 @@ typeCheckingExpr (Var x) list hashmap
    | otherwise = Left (errorExpected (fromRight HInt eitherVarType))
    where 
       eitherVarType = extractTypeHashmap hashmap x 
-
-
-
 
 typeCheckingExpr (Add expr1 expr2) list hashmap
    | isLeft eitherVarType1 = eitherVarType1
@@ -488,7 +491,8 @@ typeCheckingExpr (StringLiteral _) list hashmap
    | otherwise = Left (errorExpected HString)
 
 
-
+-- This is the type checking function for conditions that checks if the expressions inside it are logically correct and if it is correct then return HBool
+-- Otherwise if stumbles upon some errors, then return that error
 typeCheckingCond :: Condition -> [HashmapType] -> Hashmap -> Either String HashmapType
 typeCheckingCond (Eq cond1 cond2) list hashmap 
    | isLeft cond1Type = cond1Type
@@ -576,7 +580,7 @@ typeCheckingCond (Expr expr) list hashmap = typeCheckingExpr expr list hashmap
 
 
 
-
+-- This function checks whether the expresion given is Nothing or Just expression and then type checks it, in case of an error, then return the error
 typeCheckingMayExpr :: Maybe Expr -> [HashmapType] -> Hashmap -> Either String Bool
 typeCheckingMayExpr mayExpr list hashmap
    | isJust mayExpr && isLeft eitherVarType = Left (fromLeft "" eitherVarType)
@@ -585,14 +589,17 @@ typeCheckingMayExpr mayExpr list hashmap
    where
       eitherVarType = typeCheckingExpr (fromJust mayExpr) list hashmap
 
-
+-- Extract from Array data type the type of array that it is (HInt, HBool, HChar)
 fromHArray :: HashmapType -> HashmapType
 fromHArray (HArray x) = x
 fromHArray x = x
 
+-- Helper function to return the appropriate error message when a variable has a different data type than what was expected
 errorExpected :: HashmapType -> String
 errorExpected varType = ("In expression was not expected " ++ getStringType varType) 
 
+-- This function is important for the array listerals ([2, 3, x+2, y-5]), so that the expressions inside of the array all have the correct data type
+-- If something is not right, then return Left error
 typeCheckingListExpr :: [Expr] -> [HashmapType] -> Hashmap -> Either String HashmapType
 typeCheckingListExpr [x] list hashmap
    | isLeft eitherVarType = eitherVarType
@@ -608,10 +615,9 @@ typeCheckingListExpr (x:xs) list hashmap
       newList = [y | (HArray y) <- list] 
       resType = typeCheckingExpr x newList hashmap
       eitherVarType = typeCheckingListExpr xs list hashmap
- 
--- 2. renaming
 
--- function to do the type checking
+-- The function goes through each type of statement there will be inside of the program and does the necessary checks to see if it correctly defined, in case of shadowing then rename the variables
+-- Otherwise, it returns the error message of what is wrong with the program
 typeCheckingBlock :: [Statement] -> Hashmap -> [VarName] -> Either String [Statement]
 typeCheckingBlock [] _ _ = Right []
 typeCheckingBlock ((Declaration (Primitive scope varType name mayExpr)):xs) hashmap list 
@@ -866,7 +872,8 @@ renameCond name newName (Not cond) = Not (renameCond name newName cond)
 renameCond name newName (Expr expr) = Expr (renameExpr name newName expr)
 renameCond name newName x = x
 
-
+-- The function extracts from the hashmap the data type of the variable with certain name
+-- In case inside the hashmap there is not the variable, then return Left message
 extractTypeHashmap :: Hashmap -> VarName -> Either String HashmapType
 extractTypeHashmap (Scope list []) s
    | elem s (map snd list) = Right (fst $ fromJust (find (\x -> (snd x == s)) list))
@@ -875,6 +882,8 @@ extractTypeHashmap (Scope list [h]) s
    | elem s (map snd list) = Right (fst $ fromJust (find (\x -> (snd x == s)) list))
    | otherwise = extractTypeHashmap h s
 
+
+-- gets the string representation of the data type of the variables
 getStringType :: HashmapType -> String
 getStringType HInt = "Int"
 getStringType HBool = "Bool"
