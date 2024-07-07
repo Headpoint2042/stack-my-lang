@@ -38,9 +38,6 @@ main = hspec $ do
       parse boolean "" "false" `shouldBe` Right (Boolean False)
       parse boolean "" "abc" `shouldSatisfy` isLeft
       parse boolean "" "123" `shouldSatisfy` isLeft
- 
-    it "parses a string literal" $ do
-      parse parseString "" "\"Hello\"" `shouldBe` Right (StringLiteral "Hello")
 
     it "parses an addition expression" $ do
       parse expr "" "1 + 2" `shouldBe` Right (Add (Const 1) (Const 2))
@@ -59,14 +56,6 @@ main = hspec $ do
 
     it "parses an assignment" $ do
       parse assignment "" "x = 10" `shouldBe` Right (Absolute "x" (Const 10))
-
-    it "parses a block" $ do
-      parse block "" "{ int x = 5; x = 10; }" `shouldBe` Right [Block [ Declaration (Primitive Local TInt "x" (Just (Const 5)))
-                                                               , Assignment (Absolute "x" (Const 10)) ]]
-
-    it "parses a program" $ do
-      parse program "" "int x = 5; x = 10; " `shouldBe` Right (Program [ Declaration (Primitive Local TInt "x" (Just (Const 5)))
-                                                                         , Assignment (Absolute "x" (Const 10)) ]) 
                                                                          
     it "parses a condition" $ do
       parse condition "" "true && false" `shouldBe` Right (And (Boolean True) (Boolean False))
@@ -78,6 +67,142 @@ main = hspec $ do
       parse condition "" "2 > 5" `shouldBe` Right (Gt (Expr (Const 2)) (Expr (Const 5)))
       parse condition "" "x == 2" `shouldBe` Right (Eq (Expr (Var "x")) (Expr (Const 2)))
       parse condition "" "3 != 5" `shouldBe` Right (Neq (Expr (Const 3)) (Expr (Const 5)))
+
+    it "parses an array with index" $ do
+      parse arrayIndex "" "x[2]" `shouldBe` Right (ArrayIndex "x" (Const 2))
+
+    it "parses an array literal" $ do
+      parse arrayLiteral "" "[2, 3, a+b, s]" `shouldBe` Right (ArrayLiteral [Const 2, Const 3, Add (Var "a") (Var "b"), Var "s"])
+
+    it "parses a string literal" $ do
+      parse parseString "" "\"Hello\"" `shouldBe` Right (StringLiteral "Hello")
+
+    it "parses a character" $ do
+      parse parseChar "" "'a'" `shouldBe` Right (Char 'a')
+
+    it "parses an expression" $ do
+      parse expr "" "((1 + 2) * (3 - 4)) / ((5 * 6) / 7)" `shouldBe` 
+        Right (Div (Mult (Add (Const 1) (Const 2)) (Sub (Const 3) (Const 4))) (Div (Mult (Const 5) (Const 6)) (Const 7)))
+
+      parse expr "" "3 * (x + 4) / (2 - y)" `shouldBe`
+        Right (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y")))
+
+      parse expr "" "((x > 2 || y < 5) && z == 10)" `shouldBe`
+        Right (Condition (And (Or (Gt (Expr (Var "x")) (Expr (Const 2))) (Lt (Expr (Var "y")) (Expr (Const 5)))) (Eq (Expr (Var "z")) (Expr (Const 10)))))
+
+    it "parses an assignment" $ do
+      parse assignment "" "x[1] = b + 2 * 4" `shouldBe` Right (Partial "x" (Const 1) (Add (Var "b") (Mult (Const 2) (Const 4))))
+      parse assignment "" "y = a - c + b" `shouldBe` Right (Absolute "y" (Add (Sub (Var "a") (Var "c")) (Var "b")))
+
+    it "parses a declaration" $ do
+      parse declaration "" "int x" `shouldBe` Right (Primitive Local TInt "x" Nothing)
+      parse declaration "" "int x = 10" `shouldBe` Right (Primitive Local TInt "x" (Just (Const 10)))
+      parse declaration "" "int x = 3+4" `shouldBe` Right (Primitive Local TInt "x" (Just (Add (Const 3) (Const 4))))
+      parse declaration "" "global bool x" `shouldBe` Right (Primitive Global TBool "x" Nothing)
+      parse declaration "" "char y" `shouldBe` Right (Primitive Local TChar "y" Nothing)
+      parse declaration "" "int x [2]" `shouldBe` Right (Array TInt "x" 2 Nothing)
+      parse declaration "" "char c [3] = ['a', 'c', 'd']" `shouldBe` Right (Array TChar "c" 3 (Just (ArrayLiteral [Char 'a',Char 'c',Char 'd'])))
+      parse declaration "" "Lock z" `shouldBe` Right (TLock "z")
+      parse declaration "" "String s = \"Hello, World!\"" `shouldBe` Right (String "s" (StringLiteral "Hello, World!"))
+
+
+    it "parses a thread block" $ do
+      parse statement "" "thread { print(42); x = 10; }" `shouldBe` Right (Thread [Print (Const 42), Assignment (Absolute "x" (Const 10))])
+      parse statement "" "thread { }" `shouldBe` Right (Thread [])
+      parse statement "" "thread { { print(42); } }" `shouldBe` Right (Thread [Block [Print (Const 42)]])
+
+    it "parses a conditional if statement without else" $ do
+      parse statement "" "if (x == 0) { print(x); }" `shouldBe` Right (If (Eq (Expr (Var "x")) (Expr (Const 0))) [Print (Var "x")] Nothing)
+
+    it "parses a conditional if statement with else" $ do
+      parse statement "" "if (x > 0) { print(x); } else { print(x); }" `shouldBe` Right (If (Gt (Expr (Var "x")) (Expr (Const 0))) [Print (Var "x")] (Just [Print (Var "x")]))
+      parse statement "" "if ((x == 0) && (y > 10)) { print(x); } else { print(y); }" `shouldBe` Right (If (And (Eq (Expr (Var "x")) (Expr (Const 0))) (Gt (Expr (Var "y")) (Expr (Const 10)))) [Print (Var "x")] (Just [Print (Var "y")]))
+      parse statement "" "if (x == 0) { if (y == 1) {print(1);} else {print(2);} } else { print(3); }" `shouldBe` Right (If (Eq (Expr (Var "x")) (Expr (Const 0))) [If (Eq (Expr (Var "y")) (Expr (Const 1))) [Print (Const 1)] (Just [Print (Const 2)])] (Just [Print (Const 3)]))
+
+
+    it "parses a while loop" $ do
+      parse statement "" "while (x < 10) { x = x + 1; }" `shouldBe` Right (While (Lt (Expr (Var "x")) (Expr (Const 10))) [Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
+      parse statement "" "while ((x > 0) || (y < 10)) { y = y - 1; }" `shouldBe` Right (While (Or (Gt (Expr (Var "x")) (Expr (Const 0))) (Lt (Expr (Var "y")) (Expr (Const 10)))) [Assignment (Absolute "y" (Sub (Var "y") (Const 1)))])
+      parse statement "" "while (x < 10) { { print(x); } x = x + 1; }" `shouldBe` Right (While (Lt (Expr (Var "x")) (Expr (Const 10))) [Block [Print (Var "x")], Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
+
+
+    it "parses a print statement" $ do
+      parse statement "" "print(\"Hello, world!\");" `shouldBe` Right (Print (StringLiteral "Hello, world!"))
+      parse statement "" "print(3 * (x + 4) / (2 - y));" `shouldBe` Right (Print (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))))
+
+    it "parses a block" $ do
+      parse block "" "{ int x = 5; x = 10; }" `shouldBe` Right [Block [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ]]
+
+    it "parses a block statement" $ do
+      parse statement "" "{ int x = 5; x = x + 1; }" `shouldBe` Right (Block [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
+
+    it "parses a lock statement" $ do
+      parse statement "" "someLock.lock;" `shouldBe` Right (Lock "someLock")
+
+    it "parses an unlock statement" $ do
+      parse statement "" "someLock.unlock;" `shouldBe` Right (Unlock "someLock")
+
+    it "fails to parse an incomplete statement" $ do
+      parse statement "" "x = " `shouldSatisfy` isLeft
+
+    it "parses a program" $ do
+      parse program "" "int x = 5; x = 10; " `shouldBe` Right (Program [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ]) 
+      parse program "" "int x = 5; thread { x = x + 1; { int y = 10; y = y + 2; } }" `shouldBe`
+        Right (Program
+          [ Declaration (Primitive Local TInt "x" (Just (Const 5)))
+          , Thread
+              [ Assignment (Absolute "x" (Add (Var "x") (Const 1)))
+              , Block
+                  [ Declaration (Primitive Local TInt "y" (Just (Const 10)))
+                  , Assignment (Absolute "y" (Add (Var "y") (Const 2)))
+                  ]
+              ]
+          ])
+      parse program "" "int x = 0; while (x < 10) { if (x == 0) { print(x); } else { print(x + 1); } x = x + 1; }" `shouldBe`
+        Right (Program
+          [ Declaration (Primitive Local TInt "x" (Just (Const 0)))
+          , While (Lt (Expr (Var "x")) (Expr (Const 10)))
+              [ If (Eq (Expr (Var "x")) (Expr (Const 0)))
+                  [Print (Var "x")]
+                  (Just [Print (Add (Var "x") (Const 1))])
+              , Assignment (Absolute "x" (Add (Var "x") (Const 1)))
+              ]
+          ])
+      parse program "" "Lock myLock; thread { myLock.lock; x = x + 1; myLock.unlock; } thread { myLock.lock; x = x + 2; myLock.unlock; }" `shouldBe`
+        Right (Program
+          [ Declaration (TLock "myLock")
+          , Thread
+              [ Lock "myLock"
+              , Assignment (Absolute "x" (Add (Var "x") (Const 1)))
+              , Unlock "myLock"
+              ]
+          , Thread
+              [ Lock "myLock"
+              , Assignment (Absolute "x" (Add (Var "x") (Const 2)))
+              , Unlock "myLock"
+              ]
+          ])
+      parse program "" "int x = 5; thread { if (x > 0) { if (x < 10) { print(x); } else { print(10); } } else { print(0); } }" `shouldBe`
+        Right (Program
+          [ Declaration (Primitive Local TInt "x" (Just (Const 5)))
+          , Thread
+              [ If (Gt (Expr (Var "x")) (Expr (Const 0)))
+                  [ If (Lt (Expr (Var "x")) (Expr (Const 10)))
+                      [Print (Var "x")]
+                      (Just [Print (Const 10)])
+                  ]
+                  (Just [Print (Const 0)])
+              ]
+          ])
+      parse program "" "int x = 5; int y = 10; x = x + y; y = x - y; print(x); print(y);" `shouldBe`
+        Right (Program
+          [ Declaration (Primitive Local TInt "x" (Just (Const 5)))
+          , Declaration (Primitive Local TInt "y" (Just (Const 10)))
+          , Assignment (Absolute "x" (Add (Var "x") (Var "y")))
+          , Assignment (Absolute "y" (Sub (Var "x") (Var "y")))
+          , Print (Var "x")
+          , Print (Var "y")
+          ])
 
 
   -------------------------------------------
