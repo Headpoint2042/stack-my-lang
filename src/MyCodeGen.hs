@@ -243,14 +243,12 @@ compileAssignment env asgn = case asgn of
   MyParser.Partial name _ _ -> error $ "Partial assignment for variable " ++ name ++ " is not supported!"
   
 
-
 -- compile code for Block
 -- when leaving a block, we need to reset some values to their 
 -- state before entering the block: nextLocalAddr, localLookup, freeRegs
 -- remaining values are passed from within the block
 compileBlock :: Env -> MyParser.Block -> Env
 compileBlock env stmts =
-
     -- save states of env before entering block
     let oldLocalAddr    = nextLocalAddr env
         oldLocalLookup  = localLookup   env
@@ -277,7 +275,20 @@ compileStatements = foldl compileStmt
 --   in compileStatements newEnv stmts
 
 
+
+-- compile code for Print
 compilePrint :: Env -> MyParser.Expr -> Env
+
+-- special case to print String literals
+compilePrint env (MyParser.StringLiteral str) =
+  let reg = getTmpReg env
+      printCode = printLine str reg
+      newMainCode = mainCode env ++ printCode
+
+  -- update mainCode
+  in env { mainCode = newMainCode }
+
+-- handle other types
 compilePrint env expr =
   -- reg1 - used for printing; reg2 - used for intermediate calculations in printSource
   let (reg1, newEnv) = getReg env
@@ -836,3 +847,10 @@ printDigChar reg1 reg2 =
   [loadI (toInteger $ ord '0') reg2]
   ++ [Compute Add reg1 reg2 reg2]
   ++ [printChar reg2]
+
+-- prints a string literal with source (sprockell id) and new line
+printLine :: String -> RegAddr -> [Instruction]
+printLine str reg =
+  printSource reg
+  ++ printStrLit str reg
+  ++ printN reg
