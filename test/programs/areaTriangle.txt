@@ -5,11 +5,10 @@ int a = 5;
 int b = 6;
 int c = 7;
 
-// int s = (a + b + c) / 2;
-int s = (a + b + c);            // 18
+int s = (a + b + c) / 2;
 int x = a - b - c;              // -8
 
-int area = (s * (s-a) * (s-b) * (s-c));     // 30888
+int area = (s * (s-a) * (s-b) * (s-c));     // 216
 
 // print("The area of the triangle is:");
 print(area);

@@ -17,6 +17,7 @@ dependencies:
 - hspec >= 2.8 && < 2.9
 - QuickCheck >= 2.14 && < 2.15
 - containers
+- directory
 
 library:
   source-dirs: src
