@@ -500,12 +500,93 @@ genExpr env expr reg = case expr of
   MyParser.Add  e1 e2     -> genBinExpr env Add e1 e2 reg
   MyParser.Mult e1 e2     -> genBinExpr env Mul e1 e2 reg
   MyParser.Sub  e1 e2     -> genBinExpr env Sub e1 e2 reg
-  -- MyParser.Div  e1 e2 -> genDiv env e1 e2 reg
+  MyParser.Div  e1 e2     -> genDiv env e1 e2 reg
 
   -- Arrays and Strings are not supported!
   MyParser.ArrayLiteral _  -> error "Arrays are not supported!"
   MyParser.ArrayIndex _ _  -> error "Arrays are not supported!"
   MyParser.StringLiteral _ -> error "Strings are not supported!"
+
+
+-- generate code for "soft" division (N, D)
+-- divide N / D aka e1 / e2
+genDiv :: Env -> MyParser.Expr -> MyParser.Expr -> RegAddr -> [Instruction]
+genDiv env n d reg =
+  -- genereate code for exprs
+  let dCode = genExpr env d reg ++ [Push reg]  -- push denominator on stack
+      nCode = genExpr env n reg
+
+      -- use 5 regs
+      env1 = occupyReg env reg
+      regN = reg
+      (regD, env2) = getReg env1
+      (regQ, env3) = getReg env2
+      (regR, env4) = getReg env3
+      regTmp       = getTmpReg env4
+
+      -- regQ = regN / regD
+      -- stack will be used to store 2 booleans: negQ, checkR
+      divCode = [
+        -- check for division by zero
+          Pop regD                        -- regD = D
+        , loadI 0 regQ                    -- regQ = 0
+        , Compute Equal regD reg0 regTmp  -- regTmp = (regD == 0)
+        , branchRel regTmp 35             -- if regD == 0, branch to end (skip div)
+
+        -- if D < 0 then (Q, R) := divide(N, −D); return (−Q, R) end
+        , Push reg0                       -- push negQ = 0 on stack
+        , Compute GtE regD reg0 regTmp
+        , branchRel regTmp 5              -- if regD >= 0, branch to next check (N < 0)
+        , negateReg regD                  -- regD = -regD
+        , loadI 1 regTmp
+        , Pop reg0                        -- pop negQ = 0 from stack    
+        , Push regTmp                     -- push negQ = 1 to stack
+
+        -- if N < 0 then
+        , Push reg0                       -- push checkR = 0 on stack
+        , Compute GtE regN reg0 regTmp
+        , branchRel regTmp 5              -- if regN >= 0, branch to unsigned division
+        -- (Q,R) := divide(−N, D)
+        , negateReg regN                  -- regN = -regN
+        , loadI 1 regTmp
+        , Pop reg0                        -- pop checkR = 0 from stack
+        , Push regTmp                     -- push checkR = 1 on stack
+
+        -- start unsigned division (modifies: regQ, reqR)
+        , copyReg regN regR               -- regR = regN
+        -- loop
+        , Compute Lt regR regD regTmp 
+        , branchRel regTmp 5              -- if regR < regD, break loop
+        , loadI 1 regTmp                
+        , Compute Add regQ regTmp regQ    -- regQ += 1
+        , Compute Sub regR regD regR      -- regR -= regD
+        , jumpRel (-5)                    -- repeat loop
+
+        -- checkR
+        , Pop regTmp                      -- pop checkR
+        , flipReg regTmp                  -- flip checkR for branch
+        , branchRel regTmp 8              -- if checkR == 0, branch to negQ
+        -- if R = 0 then return (−Q, 0)
+        , Compute NEq regR reg0 regTmp
+        , branchRel regTmp 2              -- if regR != 0, branch to else
+        , negateReg regQ                  -- regQ = -regQ
+        , jumpRel 4                       -- skip else and jump to negQ
+        -- else
+        , negateReg regQ                  --  regQ = -regQ
+        , loadI 1 regTmp
+        , Compute Sub regQ regTmp regQ    -- regQ -= 1
+
+        -- negQ
+        , Pop regTmp                      -- pop negQ
+        , flipReg regTmp                  -- flip negQ for branch
+        , branchRel regTmp 2             -- if negQ == 0, branch to end
+        , negateReg regQ
+
+        -- copy result to reg
+        , copyReg regQ reg
+        ]
+  -- combine code
+  in dCode ++ nCode ++ divCode
 
 
 -- generate Condition
@@ -612,6 +693,11 @@ getTmpReg env = case freeRegs env of
 -- assume reg contains 0 or 1
 flipReg :: RegAddr -> Instruction
 flipReg reg = Compute Equal reg0 reg reg
+
+-- negate the value of a reg
+negateReg :: RegAddr -> Instruction
+negateReg reg = Compute Sub reg0 reg reg
+
 
 -------------------------------
 --     Load in Registers     --
