@@ -194,6 +194,9 @@ main = hspec $ do
           , Print (Var "x")
           , Print (Var "y")
           ])
+  describe "Elaboration" do
+    -- it "renames a variable in the scope" $ do
+      
 
 
 
