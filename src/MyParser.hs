@@ -838,7 +838,7 @@ renameVar name newName ((Print x):xs) = (Print (renameExpr name newName x)) : re
 renameVar name newName ((Lock x):xs) = Lock (mattchingString name newName x ) : renameVar name newName xs 
 renameVar name newName ((Unlock x):xs) = Unlock (mattchingString name newName x ) : renameVar name newName xs  
 renameVar name newName ((Block block):xs) = Block (renameVar name newName block) : renameVar name newName xs
-renameVar name newName (x:xs) = x : renameVar name newName xs 
+renameVar name newName ((Thread block):xs) = (Thread (renameVar name newName block)) : renameVar name newName xs 
 
 
 -- Checks whether it is Nothing, then returns Nothing, otherwise tries to rename what is inside of expr
