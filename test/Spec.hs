@@ -64,9 +64,8 @@ main = hspec $ do
       parse assignment "" "x = 10" `shouldBe` Right (Absolute "x" (Const 10))
                                                                          
     it "parses a condition" $ do
-      parse condition "" "true && false" `shouldBe` Right (And (Boolean True) (Boolean False))
-      parse condition "" "true || false" `shouldBe` Right (Or (Boolean True) (Boolean False))
-      parse condition "" "true && false" `shouldBe` Right (And (Boolean True) (Boolean False))
+      parse condition "" "true && false" `shouldBe` Right (And (Expr (Condition (Boolean True))) (Expr (Condition (Boolean False))))
+      parse condition "" "true || false" `shouldBe` Right (Or (Expr (Condition (Boolean True))) (Expr (Condition (Boolean False))))
       parse condition "" "2 <= 3" `shouldBe` Right (Le (Expr (Const 2)) (Expr (Const 3)))
       parse condition "" "x >= 5" `shouldBe` Right (Ge (Expr (Var "x")) (Expr (Const 5)))
       parse condition "" "34 < y" `shouldBe` Right (Lt (Expr (Const 34)) (Expr (Var "y")))
@@ -94,7 +93,7 @@ main = hspec $ do
         Right (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y")))
 
       parse expr "" "((x > 2 || y < 5) && z == 10)" `shouldBe`
-        Right (Condition (And (Or (Gt (Expr (Var "x")) (Expr (Const 2))) (Lt (Expr (Var "y")) (Expr (Const 5)))) (Eq (Expr (Var "z")) (Expr (Const 10)))))
+        Right (Condition (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Const 2))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))))
 
     it "parses an assignment" $ do
       parse assignment "" "x[1] = b + 2 * 4" `shouldBe` Right (Partial "x" (Const 1) (Add (Var "b") (Mult (Const 2) (Const 4))))
@@ -122,13 +121,13 @@ main = hspec $ do
 
     it "parses a conditional if statement with else" $ do
       parse statement "" "if (x > 0) { print(x); } else { print(x); }" `shouldBe` Right (If (Gt (Expr (Var "x")) (Expr (Const 0))) [Print (Var "x")] (Just [Print (Var "x")]))
-      parse statement "" "if ((x == 0) && (y > 10)) { print(x); } else { print(y); }" `shouldBe` Right (If (And (Eq (Expr (Var "x")) (Expr (Const 0))) (Gt (Expr (Var "y")) (Expr (Const 10)))) [Print (Var "x")] (Just [Print (Var "y")]))
+      parse statement "" "if ((x == 0) && (y > 10)) { print(x); } else { print(y); }" `shouldBe` Right (If (And (Expr (Condition (Eq (Expr (Var "x")) (Expr (Const 0))))) (Expr (Condition (Gt (Expr (Var "y")) (Expr (Const 10)))))) [Print (Var "x")] (Just [Print (Var "y")]))
       parse statement "" "if (x == 0) { if (y == 1) {print(1);} else {print(2);} } else { print(3); }" `shouldBe` Right (If (Eq (Expr (Var "x")) (Expr (Const 0))) [If (Eq (Expr (Var "y")) (Expr (Const 1))) [Print (Const 1)] (Just [Print (Const 2)])] (Just [Print (Const 3)]))
 
 
     it "parses a while loop" $ do
       parse statement "" "while (x < 10) { x = x + 1; }" `shouldBe` Right (While (Lt (Expr (Var "x")) (Expr (Const 10))) [Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
-      parse statement "" "while ((x > 0) || (y < 10)) { y = y - 1; }" `shouldBe` Right (While (Or (Gt (Expr (Var "x")) (Expr (Const 0))) (Lt (Expr (Var "y")) (Expr (Const 10)))) [Assignment (Absolute "y" (Sub (Var "y") (Const 1)))])
+      parse statement "" "while ((x > 0) || (y < 10)) { y = y - 1; }" `shouldBe` Right (While (Or (Expr (Condition (Gt (Expr (Var "x")) (Expr (Const 0))))) (Expr (Condition (Lt (Expr (Var "y")) (Expr (Const 10)))))) [Assignment (Absolute "y" (Sub (Var "y") (Const 1)))])
       parse statement "" "while (x < 10) { { print(x); } x = x + 1; }" `shouldBe` Right (While (Lt (Expr (Var "x")) (Expr (Const 10))) [Block [Print (Var "x")], Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
 
 
@@ -209,10 +208,128 @@ main = hspec $ do
           , Print (Var "x")
           , Print (Var "y")
           ])
+    it "parses a complex program" $ do
+      let input = unlines
+            [ "int x;"
+            , "if (x > 2) {"
+            , "  int x = 12;"
+            , "  while (x < 24) {"
+            , "    char x = 'c';"
+            , "  }"
+            , "}"
+            , "else"
+            , "{"
+            ,   "y = x + 1;"
+            , "}"
+            , "while (x < 5) {"
+            , "  x = x + 1;"
+            , "  print(x);"
+            , "}"
+            , "bool y = (x - 2 * 16 == 3 * x);"
+            , "thread {"
+            , "  int x = 0;"
+            , "}"
+            , "print((x && y));"
+            , "{"
+            , "  y = 24 + x;"
+            , "}"
+            ]
+      let expected = Program
+            [ Declaration (Primitive Local TInt "x" Nothing)
+              , If (Gt (Expr (Var "x")) (Expr (Const 2)))
+                  [ Declaration (Primitive Local TInt "x" (Just (Const 12)))
+                  , While (Lt (Expr (Var "x")) (Expr (Const 24)))
+                      [ Declaration (Primitive Local TChar "x" (Just (Char 'c')))
+                      ]
+                  ] 
+                  ( Just 
+                    [ Assignment (Absolute "y" (Add (Var "x") (Const 1)))
+                    ] 
+                  )
+              , While (Lt (Expr (Var "x")) (Expr (Const 5)))
+                  [ Assignment (Absolute "x" (Add (Var "x") (Const 1)))
+                  , Print (Var "x")
+                  ]
+              , Declaration (Primitive Local TBool "y"
+                  (Just (Condition (Eq (Expr (Sub (Var "x") (Mult (Const 2) (Const 16))))
+                                    (Expr (Mult (Const 3) (Var "x")))))))
+              , Thread
+                  [ Declaration (Primitive Local TInt "x" (Just (Const 0)))
+                  ]
+              , Print (Condition (And (Expr (Var "x")) (Expr (Var "y"))))
+              , Block
+                  [ Assignment (Absolute "y" (Add (Const 24) (Var "x")))
+                  ]
+              ]
+      parse program "" input `shouldBe` Right expected
 
-  -- describe "Elaboration" $ do
-  --   -- it "renames a variable in the scope" $ do
-      
+
+  -------------------------------------------------------------------------------------------------------------------
+  --                                                  ELABORATION                                                  --
+  -------------------------------------------------------------------------------------------------------------------
+
+
+  describe "Elaboration" $ do
+    it "renames a variable in multiple types of statements" $ do
+      let input =
+            [ Declaration (Primitive Local TInt "x" Nothing)
+              , If (Gt (Expr (Var "x")) (Expr (Const 2)))
+                  [ Declaration (Primitive Local TInt "x" (Just (Const 12)))
+                  , While (Lt (Expr (Var "x")) (Expr (Const 24)))
+                      [ Declaration (Primitive Local TChar "x" (Just (Char 'c')))
+                      ]
+                  ] 
+                  ( Just 
+                    [ Assignment (Absolute "y" (Add (Var "x") (Const 1)))
+                    ] 
+                  )
+              , While (Lt (Expr (Var "x")) (Expr (Const 5)))
+                  [ Assignment (Absolute "x" (Add (Var "x") (Const 1)))
+                  , Print (Var "x")
+                  ]
+              , Declaration (Primitive Local TBool "y"
+                  (Just (Condition (Eq (Expr (Sub (Var "x") (Mult (Const 2) (Const 16))))
+                                    (Expr (Mult (Const 3) (Var "x")))))))
+              , Thread
+                  [ Declaration (Primitive Local TInt "x" (Just (Const 0)))
+                  ]
+              , Print (Condition (And (Expr (Var "x")) (Expr (Var "y"))))
+              , Block
+                  [ Assignment (Absolute "y" (Add (Const 24) (Var "x")))
+                  ]
+              ]
+      let expected =  
+            [ Declaration (Primitive Local TInt "y" Nothing)
+              , If (Gt (Expr (Var "y")) (Expr (Const 2)))
+                  [ Declaration (Primitive Local TInt "y" (Just (Const 12)))
+                  , While (Lt (Expr (Var "y")) (Expr (Const 24)))
+                      [ Declaration (Primitive Local TChar "y" (Just (Char 'c')))
+                      ]
+                  ] 
+                  ( Just 
+                    [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
+                    ] 
+                  )
+              , While (Lt (Expr (Var "y")) (Expr (Const 5)))
+                  [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
+                  , Print (Var "y")
+                  ]
+              , Declaration (Primitive Local TBool "y"
+                  (Just (Condition (Eq (Expr (Sub (Var "y") (Mult (Const 2) (Const 16))))
+                                    (Expr (Mult (Const 3) (Var "y")))))))
+              , Thread
+                  [ Declaration (Primitive Local TInt "x" (Just (Const 0)))
+                  ]
+              , Print (Condition (And (Expr (Var "y")) (Expr (Var "y"))))
+              , Block
+                  [ Assignment (Absolute "y" (Add (Const 24) (Var "y")))
+                  ]
+              ]
+      renameVar "x" "y" input `shouldBe` expected
+    -- it "" $ do
+
+  
+    
 
 
   -------------------------------------------------------------------------------------------------------------------

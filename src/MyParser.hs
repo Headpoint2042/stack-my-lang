@@ -219,10 +219,10 @@ arrayIndex :: Parser Expr
 arrayIndex = ArrayIndex <$> identifier <*> brackets expr
 
 conditionExpr :: Parser Condition
-conditionExpr =  try (parens condition)
-             <|> try boolean
-             <|> (chainl1 (Expr <$> expr)
+conditionExpr =  try (chainl1 (Expr <$> expr)
                  (try eq <|> try neq <|> try ge <|> try le <|> try gt <|> try lt))
+             <|> try boolean
+             <|> (parens condition)
 
 
 condition :: Parser Condition
@@ -631,16 +631,19 @@ typeCheckingListExpr (x:xs) list hashmap
 typeCheckingBlock :: [Statement] -> Hashmap -> [VarName] -> Either String [Statement]
 typeCheckingBlock [] _ _ = Right []
 typeCheckingBlock ((Declaration (Primitive scope varType name mayExpr)):xs) hashmap list 
-   | checkShadowing hashmap name = typeCheckingBlock (renameVar name newName ((Declaration (Primitive scope varType name mayExpr)):xs)) hashmap (list ++ [newName])
-   | isLeft either1 = Left (fromLeft "" either1) 
+   | isLeft either1 = Left (fromLeft "" either1)
+   | checkShadowing hashmap name = case either3 of
+                                       Left err -> Left err
+                                       Right prog -> Right ((Declaration (Primitive scope varType newName mayExpr)) : prog) 
    | isLeft either2 = either2 
    | otherwise = Right ((Declaration (Primitive scope varType name mayExpr)) : (fromRight [] either2)) 
    where 
       either1 = typeCheckingMayExpr mayExpr [changeType varType] hashmap
       either2 = typeCheckingBlock xs (insertHashmap (changeType varType, name) hashmap) list
+      either3 = typeCheckingBlock (renameVar name newName xs) (insertHashmap (changeType varType, newName) hashmap) (list ++ [newName])
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
-         | otherwise = name ++ "1"
+         | otherwise = name ++ "_1"
       (nameStart, num) = (init (name :: String), last (name :: String))
 
 
@@ -652,7 +655,7 @@ typeCheckingBlock ((Declaration (TLock name)):xs) hashmap list
       either1 = typeCheckingBlock xs (insertHashmap (HLock, name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
-         | otherwise = name ++ "1"
+         | otherwise = name ++ "_1"
       (nameStart, num) = (init (name :: String), last (name :: String))
 
 
@@ -668,7 +671,7 @@ typeCheckingBlock ((Declaration (Array varType name size mayExpr)):xs) hashmap l
       either3 = typeCheckingBlock xs (insertHashmap (HArray (changeType varType), name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
-         | otherwise = name ++ "1"
+         | otherwise = name ++ "_1"
       (nameStart, num) = (init (name :: String), last (name :: String))
 
 
@@ -682,7 +685,7 @@ typeCheckingBlock ((Declaration (String name expr)):xs) hashmap list
       either2 = typeCheckingBlock xs (insertHashmap (HString, name) hashmap) list
       newName 
          | elem name list = nameStart ++ show ((read [num]) + 1)
-         | otherwise = name ++ "1"
+         | otherwise = name ++ "_1"
       (nameStart, num) = (init (name :: String), last (name :: String))
 
 
