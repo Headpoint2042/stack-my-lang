@@ -210,11 +210,11 @@ main = hspec $ do
           ])
 
 
-  -----------------------------------------------------------------------------------------------------------------
-  --                                                  COMPILING                                                  --
-  -----------------------------------------------------------------------------------------------------------------
+  -------------------------------------------------------------------------------------------------------------------
+  --                                                  COMPILATION                                                  --
+  -------------------------------------------------------------------------------------------------------------------
 
-  describe "Compiling" $ do
+  describe "Compilation" $ do
     it "prints a number" $ do
       output <- runFile "printConst"
       output `shouldBe` "Sprockell 0 says 101\n"
@@ -246,10 +246,15 @@ main = hspec $ do
       output <- runFile "addTwoNums"
       lines output `shouldBe` expectedLines
 
-    -- TODO: implement div for areaTriangle.txt
     it "prints squared area of a triangle" $ do
       let expectedLines = [ "Sprockell 0 says 216" ]
       output <- runFile "areaTriangle"
+      lines output `shouldBe` expectedLines
+
+    it "prints Hello World!" $ do
+      let expectedLines = [ "Sprockell 0 says Hello World!"
+                          ]
+      output <- runFile "printHelloWorld"
       lines output `shouldBe` expectedLines
 
     it "swaps two variables" $ do
@@ -368,8 +373,37 @@ main = hspec $ do
                           ]
       output <- runFile "testArithmetic"
       lines output `shouldBe` expectedLines
-
     
+    it "tests threads and locks" $ do
+      let expectedLines = [ "Sprockell 1 says Thread 1 x"
+                          , "Sprockell 1 says 1"
+                          , "Sprockell 1 says Thread 1 y"
+                          , "Sprockell 1 says 7"
+                          , "Sprockell 2 says Thread 2 x"
+                          , "Sprockell 2 says 0"
+                          , "Sprockell 3 says Thread 3 x"
+                          , "Sprockell 3 says 0"
+                          , "Sprockell 3 says Thread 3 y"
+                          , "Sprockell 3 says 21"
+                          , "Sprockell 4 says Thread 4 x"
+                          , "Sprockell 4 says 2"
+                          , "Sprockell 4 says Thread 4 y"
+                          , "Sprockell 4 says 23"
+                          , "Sprockell 0 says Final x"
+                          , "Sprockell 0 says 2"
+                          , "Sprockell 0 says Final y"
+                          , "Sprockell 0 says 23"
+                          ]
+      output <- runFile "testThreads"
+      lines output `shouldBe` expectedLines
+
+    it "tests infinite loops" $ do
+      let expectedLines = [ "Sprockell 0 says 10"
+                          , "Sprockell 0 says 5"
+                          ]
+      output <- runFile "swapVars"
+      lines output `shouldBe` expectedLines
+
 
 {-
 it "swaps two variables" $ do
