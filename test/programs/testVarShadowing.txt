@@ -21,15 +21,18 @@ thread {
 
         if (true) {
             char x = 'z';
-            print(x);
+            if (x == 'w') {
+                print("impossible");
+            } else {
+                print("possible");
+                print(x);
+            }
 
             thread {
                 int x = 50;
                 print(x);
 
-                while (x == false) {
-                    
-                }
+                
             }
         }
     }
