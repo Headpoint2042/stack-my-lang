@@ -30,14 +30,14 @@ compile filePath = do
     case output of
         -- error
         Left  err -> do
-            putStrLn $ show err
+            print err
 
         -- compile ast
         Right ast -> do
             let env = compileProgram ast
             let threads = mainCode env : threadsCode env
-            putStrLn $ "Main Code: " ++ show (mainCode env)
-            putStrLn $ "Threads code: " ++ show (threadsCode env)
+            -- putStrLn $ "Main Code: " ++ show (mainCode env)
+            -- putStrLn $ "Threads code: " ++ show (threadsCode env)
             run threads
 
 

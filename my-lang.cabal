@@ -28,6 +28,7 @@ library
       QuickCheck ==2.14.*
     , base >=4.7 && <5
     , containers
+    , directory
     , hspec ==2.8.*
     , parsec ==3.1.*
     , sprockell >=2022.0
@@ -44,6 +45,7 @@ executable my-lang-exe
       QuickCheck ==2.14.*
     , base >=4.7 && <5
     , containers
+    , directory
     , hspec ==2.8.*
     , my-lang
     , parsec ==3.1.*
@@ -62,6 +64,7 @@ test-suite my-lang-test
       QuickCheck ==2.14.*
     , base >=4.7 && <5
     , containers
+    , directory
     , hspec ==2.8.*
     , my-lang
     , parsec ==3.1.*

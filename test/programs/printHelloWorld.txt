@@ -1,3 +1,5 @@
+// STRINGS ARE NOT SUPPORTED!
+
 // This program prints "Hello World"
 
 // print("Hello World");

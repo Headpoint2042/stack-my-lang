@@ -579,13 +579,14 @@ genDiv env n d reg =
         -- negQ
         , Pop regTmp                      -- pop negQ
         , flipReg regTmp                  -- flip negQ for branch
-        , branchRel regTmp 2             -- if negQ == 0, branch to end
+        , branchRel regTmp 2              -- if negQ == 0, branch to end
         , negateReg regQ
 
         -- copy result to reg
         , copyReg regQ reg
         ]
   -- combine code
+  -- it is important to keep this order (because we store d on stack)!
   in dCode ++ nCode ++ divCode
 
 

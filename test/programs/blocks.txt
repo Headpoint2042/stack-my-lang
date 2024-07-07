@@ -19,10 +19,10 @@ bool globalVar2 = true;
 
     // Modify local variable
     localVar1 = localVar1 + 1;
-    print('\n');
+    // print('\n');
     print(localVar1);
 
-    print('\n');
+    // print('\n');
     // Conditionals within local scope
     if (localVar1 > 5) {
         print(true);
@@ -30,7 +30,7 @@ bool globalVar2 = true;
         print(false);
     }
 
-    print('\n');
+    // print('\n');
     // While loop within local scope
     while (localVar1 < 10) {
         localVar1 = localVar1 + 1;
@@ -38,7 +38,7 @@ bool globalVar2 = true;
     }
 }
 
-print('\n');
+// print('\n');
 // Global scope continues
 globalVar1 = globalVar1 * 2;
 print(globalVar1);
