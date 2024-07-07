@@ -397,6 +397,18 @@ main = hspec $ do
       output <- runFile "testVars"
       lines output `shouldBe` expectedLines
 
+    it "tests assignment of expressions" $ do
+      let expectedLines = [ "Sprockell 0 says 0"
+                          , "Sprockell 0 says 12"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says 0"
+                          , "Sprockell 0 says 47"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says false"
+                          ]
+      output <- runFile "testExpr"
+      lines output `shouldBe` expectedLines
+
     it "tests boolean operations" $ do
       let expectedLines = [ "Sprockell 0 says false"
                           , "Sprockell 0 says false"
