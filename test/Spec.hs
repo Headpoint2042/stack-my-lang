@@ -13,6 +13,7 @@ import Data.Either
 import GHC.IO.Handle
 import System.IO
 import System.Directory
+import System.Timeout
 
 -- `shouldSatisfy` isLeft -> means an error was returned
 
@@ -208,8 +209,9 @@ main = hspec $ do
           , Print (Var "x")
           , Print (Var "y")
           ])
-  describe "Elaboration" do
-    -- it "renames a variable in the scope" $ do
+
+  -- describe "Elaboration" $ do
+  --   -- it "renames a variable in the scope" $ do
       
 
 
@@ -227,8 +229,8 @@ main = hspec $ do
       output `shouldBe` "Sprockell 0 says a\n"
 
     it "prints a boolean" $ do
-      let expectedLines = [ "Sprockell 0 says 1"
-                          , "Sprockell 0 says 0"
+      let expectedLines = [ "Sprockell 0 says true"
+                          , "Sprockell 0 says false"
                           ]
       output <- runFile "printBool"
       lines output `shouldBe` expectedLines
@@ -236,8 +238,8 @@ main = hspec $ do
     it "prints nested variables" $ do
       let expectedLines = [ "Sprockell 0 says 10"
                           , "Sprockell 0 says W"
-                          , "Sprockell 0 says 0"
-                          , "Sprockell 0 says 1"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says true"
                           ]
       output <- runFile "printVars"
       lines output `shouldBe` expectedLines
@@ -267,17 +269,28 @@ main = hspec $ do
       output <- runFile "swapVars"
       lines output `shouldBe` expectedLines
 
-    it "tests boolean operations" $ do
+    it "tests variable delcaration (int, bool, char)" $ do
       let expectedLines = [ "Sprockell 0 says 0"
-                          , "Sprockell 0 says 0"
-                          , "Sprockell 0 says 0"
-                          , "Sprockell 0 says 1"
-                          , "Sprockell 0 says 1"
-                          , "Sprockell 0 says 1"
-                          , "Sprockell 0 says 1"
-                          , "Sprockell 0 says 1"
-                          , "Sprockell 0 says 0"
-                          , "Sprockell 0 says 1"
+                          , "Sprockell 0 says 10"
+                          , "Sprockell 0 says  "  -- 2 spaces here
+                          , "Sprockell 0 says K"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says true"
+                          ]
+      output <- runFile "testVars"
+      lines output `shouldBe` expectedLines
+
+    it "tests boolean operations" $ do
+      let expectedLines = [ "Sprockell 0 says false"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says true"
                           , "Sprockell 0 says 202"
                           , "Sprockell 0 says 404"
                           , "Sprockell 0 says 505"
@@ -311,15 +324,15 @@ main = hspec $ do
     it "tests blocks/scopes" $ do
       let expectedLines = [ "Sprockell 0 says c"
                           , "Sprockell 0 says 10"
-                          , "Sprockell 0 says 1"
+                          , "Sprockell 0 says true"
                           , "Sprockell 0 says 6"
-                          , "Sprockell 0 says 1"
+                          , "Sprockell 0 says true"
                           , "Sprockell 0 says 7"
                           , "Sprockell 0 says 8"
                           , "Sprockell 0 says 9"
                           , "Sprockell 0 says 10"
                           , "Sprockell 0 says 20"
-                          , "Sprockell 0 says 1"
+                          , "Sprockell 0 says true"
                           , "Sprockell 0 says 19"
                           , "Sprockell 0 says 18"
                           , "Sprockell 0 says 17"
@@ -400,12 +413,27 @@ main = hspec $ do
       output <- runFile "testThreads"
       lines output `shouldBe` expectedLines
 
-    it "tests infinite loops" $ do
+    it "tests variable shadowing" $ do
       let expectedLines = [ "Sprockell 0 says 10"
-                          , "Sprockell 0 says 5"
+                          , "Sprockell 1 says false"
+                          , "Sprockell 2 says 20"
+                          , "Sprockell 2 says a"
+                          , "Sprockell 2 says 30"
+                          , "Sprockell 2 says z"
+                          , "Sprockell 3 says 50"
+                          , "Sprockell 3 says W"
                           ]
-      output <- runFile "swapVars"
+      output <- runFile "testVarShadowing"
       lines output `shouldBe` expectedLines
+
+    -- NO IDEA WHY THESE TESTS ARE NOT DISPLAYED IN CONSOLE
+    it "tests infinite loops (while)" $ do
+      output <- timeout (1 * 10^6) $ runFile "testInfiniteWhile"
+      output `shouldBe` Nothing
+
+    it "tests infinite loops (locks)" $ do
+      output <- timeout (1 * 10^6) $ runFile "testInfLock"
+      output `shouldBe` Nothing
 
 
 {-

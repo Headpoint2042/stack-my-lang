@@ -290,7 +290,7 @@ compilePrint env (MyParser.StringLiteral str) =
 
 -- handle other types
 compilePrint env expr =
-  -- reg1 - used for printing; reg2 - used for intermediate calculations in printSource
+  -- reg1 holds value of expr to be printed
   let (reg1, newEnv) = getReg env
       reg2           = getTmpReg newEnv
       exprType       = exprPrintType env expr
@@ -298,9 +298,19 @@ compilePrint env expr =
 
       printCode = case exprType of
         MyParser.TInt  -> [printConst reg1]
+
         MyParser.TChar -> printSource reg2
                           ++ [printChar reg1]
-                          ++ printN reg1
+                          ++ printN reg2
+
+        MyParser.TBool -> let fCode = printLine "false" reg2
+                              tCode = printLine "true" reg2
+                              offset1 = length fCode + 2
+                              offset2 = length tCode + 1
+                          in [branchRel reg1 offset1]
+                             ++ fCode
+                             ++ [jumpRel offset2]
+                             ++ tCode
       
       newMainCode = mainCode env ++ exprCode ++ printCode
   in env { mainCode = newMainCode }
@@ -308,16 +318,21 @@ compilePrint env expr =
 
 -- get type of expr for printing (TInt or TChar; TBool is printed as TInt)
 exprPrintType :: Env -> MyParser.Expr -> MyParser.MyType
+exprPrintType _   (MyParser.Condition _) = MyParser.TBool
 exprPrintType _   (MyParser.Char _) = MyParser.TChar
 exprPrintType env (MyParser.Var name) =
+
   -- search in local memory
   case Map.lookup name (localLookup env) of
-    Just (_, typ) -> if typ == MyParser.TChar then typ else MyParser.TInt
+    -- Just (_, typ) -> if typ == MyParser.TChar then typ else MyParser.TInt
+    Just (_, typ) -> typ
     Nothing       ->
+
       -- search in shMem
       case Map.lookup name (globalLookup env) of
         Just (_, typ) -> typ
         Nothing       -> error $ "Variable " ++ name ++ " not found! Did you declare it?"
+
 -- all other expr constructors
 exprPrintType _ _ = MyParser.TInt
 
