@@ -47,23 +47,17 @@ main = hspec $ do
       parse boolean "" "abc" `shouldSatisfy` isLeft
       parse boolean "" "123" `shouldSatisfy` isLeft
 
-    it "parses an addition expression" $ do
-      parse expr "" "1 + 2" `shouldBe` Right (Add (Const 1) (Const 2))
+    it "parses an addition expression" $ parse expr "" "1 + 2" `shouldBe` Right (Add (Const 1) (Const 2))
 
-    it "parses a subtraction expression" $ do
-      parse expr "" "3 - 1" `shouldBe` Right (Sub (Const 3) (Const 1))
+    it "parses a subtraction expression" $ parse expr "" "3 - 1" `shouldBe` Right (Sub (Const 3) (Const 1))
 
-    it "parses a multiplication expression" $ do
-      parse expr "" "2 * 3" `shouldBe` Right (Mult (Const 2) (Const 3))
+    it "parses a multiplication expression" $ parse expr "" "2 * 3" `shouldBe` Right (Mult (Const 2) (Const 3))
 
-    it "parses a division expression" $ do
-      parse expr "" "6 / 2" `shouldBe` Right (Div (Const 6) (Const 2))
+    it "parses a division expression" $ parse expr "" "6 / 2" `shouldBe` Right (Div (Const 6) (Const 2))
 
-    it "parses a declaration" $ do
-      parse declaration "" "int x = 5;" `shouldBe` Right (Primitive Local TInt "x" (Just (Const 5)))
+    it "parses a declaration" $ parse declaration "" "int x = 5;" `shouldBe` Right (Primitive Local TInt "x" (Just (Const 5)))
 
-    it "parses an assignment" $ do
-      parse assignment "" "x = 10" `shouldBe` Right (Absolute "x" (Const 10))
+    it "parses an assignment" $ parse assignment "" "x = 10" `shouldBe` Right (Absolute "x" (Const 10))
 
     it "parses a condition" $ do
       parse condition "" "true && false" `shouldBe` Right (And (Expr (Condition (Boolean True))) (Expr (Condition (Boolean False))))
@@ -75,17 +69,13 @@ main = hspec $ do
       parse condition "" "x == 2" `shouldBe` Right (Eq (Expr (Var "x")) (Expr (Const 2)))
       parse condition "" "3 != 5" `shouldBe` Right (Neq (Expr (Const 3)) (Expr (Const 5)))
 
-    it "parses an array with index" $ do
-      parse arrayIndex "" "x[2]" `shouldBe` Right (ArrayIndex "x" (Const 2))
+    it "parses an array with index" $ parse arrayIndex "" "x[2]" `shouldBe` Right (ArrayIndex "x" (Const 2))
 
-    it "parses an array literal" $ do
-      parse arrayLiteral "" "[2, 3, a+b, s]" `shouldBe` Right (ArrayLiteral [Const 2, Const 3, Add (Var "a") (Var "b"), Var "s"])
+    it "parses an array literal" $ parse arrayLiteral "" "[2, 3, a+b, s]" `shouldBe` Right (ArrayLiteral [Const 2, Const 3, Add (Var "a") (Var "b"), Var "s"])
 
-    it "parses a string literal" $ do
-      parse parseString "" "\"Hello\"" `shouldBe` Right (StringLiteral "Hello")
+    it "parses a string literal" $ parse parseString "" "\"Hello\"" `shouldBe` Right (StringLiteral "Hello")
 
-    it "parses a character" $ do
-      parse parseChar "" "'a'" `shouldBe` Right (Char 'a')
+    it "parses a character" $ parse parseChar "" "'a'" `shouldBe` Right (Char 'a')
 
     it "parses an expression" $ do
       parse expr "" "((1 + 2) * (3 - 4)) / ((5 * 6) / 7)" `shouldBe`
@@ -118,8 +108,7 @@ main = hspec $ do
       parse statement "" "thread { }" `shouldBe` Right (Thread [])
       parse statement "" "thread { { print(42); } }" `shouldBe` Right (Thread [Block [Print (Const 42)]])
 
-    it "parses a conditional if statement without else" $ do
-      parse statement "" "if (x == 0) { print(x); }" `shouldBe` Right (If (Eq (Expr (Var "x")) (Expr (Const 0))) [Print (Var "x")] Nothing)
+    it "parses a conditional if statement without else" $ parse statement "" "if (x == 0) { print(x); }" `shouldBe` Right (If (Eq (Expr (Var "x")) (Expr (Const 0))) [Print (Var "x")] Nothing)
 
     it "parses a conditional if statement with else" $ do
       parse statement "" "if (x > 0) { print(x); } else { print(x); }" `shouldBe` Right (If (Gt (Expr (Var "x")) (Expr (Const 0))) [Print (Var "x")] (Just [Print (Var "x")]))
@@ -137,20 +126,15 @@ main = hspec $ do
       parse statement "" "print(\"Hello, world!\");" `shouldBe` Right (Print (StringLiteral "Hello, world!"))
       parse statement "" "print(3 * (x + 4) / (2 - y));" `shouldBe` Right (Print (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))))
 
-    it "parses a block" $ do
-      parse block "" "{ int x = 5; x = 10; }" `shouldBe` Right [Block [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ]]
+    it "parses a block" $ parse block "" "{ int x = 5; x = 10; }" `shouldBe` Right [Block [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ]]
 
-    it "parses a block statement" $ do
-      parse statement "" "{ int x = 5; x = x + 1; }" `shouldBe` Right (Block [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
+    it "parses a block statement" $ parse statement "" "{ int x = 5; x = x + 1; }" `shouldBe` Right (Block [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Add (Var "x") (Const 1)))])
 
-    it "parses a lock statement" $ do
-      parse statement "" "someLock.lock;" `shouldBe` Right (Lock "someLock")
+    it "parses a lock statement" $ parse statement "" "someLock.lock;" `shouldBe` Right (Lock "someLock")
 
-    it "parses an unlock statement" $ do
-      parse statement "" "someLock.unlock;" `shouldBe` Right (Unlock "someLock")
+    it "parses an unlock statement" $ parse statement "" "someLock.unlock;" `shouldBe` Right (Unlock "someLock")
 
-    it "fails to parse an incomplete statement" $ do
-      parse statement "" "x = " `shouldSatisfy` isLeft
+    it "fails to parse an incomplete statement" $ parse statement "" "x = " `shouldSatisfy` isLeft
 
     it "parses a program" $ do
       parse program "" "int x = 5; x = 10; " `shouldBe` Right (Program [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ])
@@ -329,75 +313,70 @@ main = hspec $ do
               ]
       renameVar "x" "y" input `shouldBe` expected
 
-    it "type checks an expression" $ do
-      typeCheckingExpr (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))) [HInt] (Scope [(HInt, "x"), (HInt, "y")] [])
-        `shouldBe` Right HInt
+    it "type checks an expression" $ typeCheckingExpr (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))) [HInt] (Scope [(HInt, "x"), (HInt, "y")] [])
+      `shouldBe` Right HInt
 
-    it "type checks a condition" $ do
-      typeCheckingCond (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Const 2))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))) [HBool] (Scope [(HInt, "x"), (HInt, "y"), (HInt, "z")] [])
-        `shouldBe` Right HBool
+    it "type checks a condition" $ typeCheckingCond (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Const 2))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))) [HBool] (Scope [(HInt, "x"), (HInt, "y"), (HInt, "z")] [])
+      `shouldBe` Right HBool
 
-    it "type checks an invalid expression" $ do
-      typeCheckingExpr (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))) [HInt] (Scope [(HInt, "x"), (HChar, "y")] [])
-        `shouldSatisfy` isLeft
+    it "type checks an invalid expression" $ typeCheckingExpr (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))) [HInt] (Scope [(HInt, "x"), (HChar, "y")] [])
+      `shouldSatisfy` isLeft
 
-    it "type checks an invalid condition" $ do
-      typeCheckingCond (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Condition (Boolean True)))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))) [HBool] (Scope [(HInt, "x"), (HChar, "y"), (HBool, "z")] [])
-        `shouldSatisfy` isLeft
+    it "type checks an invalid condition" $ typeCheckingCond (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Condition (Boolean True)))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))) [HBool] (Scope [(HInt, "x"), (HChar, "y"), (HBool, "z")] [])
+      `shouldSatisfy` isLeft
 
-    it "type checks an expression with different data types" $ do
-      typeCheckingExpr (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))) [HBool] (Scope [(HInt, "x"), (HBool, "y")] [])
-        `shouldBe` Right HBool
+    it "type checks an expression with different data types" $ typeCheckingExpr (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))) [HBool] (Scope [(HInt, "x"), (HBool, "y")] [])
+      `shouldBe` Right HBool
 
     it "type checks declaration" $ do
-      typeCheckingBlock [(Declaration (Primitive Local TInt "y" Nothing))] (Scope [] []) []
-        `shouldBe` Right [(Declaration (Primitive Local TInt "y" Nothing))]
-      typeCheckingBlock [(Declaration (Primitive Global TBool "x" (Just (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))))))] (Scope [(HInt, "x"), (HBool, "y")] [Scope [] []]) []
-        `shouldBe` Right [(Declaration (Primitive Global TBool "x_1" (Just (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))))))]
+      typeCheckingBlock [Declaration (Primitive Local TInt "y" Nothing)] (Scope [] []) []
+        `shouldBe` Right [Declaration (Primitive Local TInt "y" Nothing)]
+      typeCheckingBlock [Declaration (Primitive Global TBool "x" (Just (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y"))))))] (Scope [(HInt, "x"), (HBool, "y")] [Scope [] []]) []
+        `shouldBe` Right [Declaration (Primitive Global TBool "x_1" (Just (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y"))))))]
 
     it "type checks an assignment" $ do
-      typeCheckingBlock [(Assignment (Absolute "y" (Add (Var "y") (Const 1))))] (Scope [(HInt, "y")] []) []
-        `shouldBe` Right [(Assignment (Absolute "y" (Add (Var "y") (Const 1))))]
-      typeCheckingBlock [(Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True)))))))] (Scope [(HBool, "x")] []) []
-        `shouldBe` Right [(Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True)))))))]
+      typeCheckingBlock [Assignment (Absolute "y" (Add (Var "y") (Const 1)))] (Scope [(HInt, "y")] []) []
+        `shouldBe` Right [Assignment (Absolute "y" (Add (Var "y") (Const 1)))]
+      typeCheckingBlock [Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True))))))] (Scope [(HBool, "x")] []) []
+        `shouldBe` Right [Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True))))))]
       -- should give error, because, tries to compare integer with boolean
-      typeCheckingBlock [(Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True)))))))] (Scope [(HInt, "x")] []) []
+      typeCheckingBlock [Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True))))))] (Scope [(HInt, "x")] []) []
         `shouldSatisfy` isLeft
 
     it "checks for shadowing" $ do
-      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [(Scope [(HChar, "c")] [(Scope [] [])])]) "x" `shouldBe` True
-      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [(Scope [(HChar, "c")] [(Scope [] [])])]) "c" `shouldBe` True
-      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [(Scope [(HChar, "c")] [(Scope [] [])])]) "f" `shouldBe` False
+      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [Scope [(HChar, "c")] [Scope [] []]]) "x" `shouldBe` True
+      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [Scope [(HChar, "c")] [Scope [] []]]) "c" `shouldBe` True
+      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [Scope [(HChar, "c")] [Scope [] []]]) "f" `shouldBe` False
 
     it "type checks a if statement" $ do
-      typeCheckingBlock [(If (Boolean True) ([(Declaration (Primitive Local TInt "y" Nothing))]) Nothing)] (Scope [] []) [] `shouldBe` Right [(If (Boolean True) ([(Declaration (Primitive Local TInt "y" Nothing))]) Nothing)]
-      typeCheckingBlock [(If (Boolean False) ([(Declaration (Primitive Local TInt "y" Nothing))]) (Just ([(Print (Const 1))])))] (Scope [] []) [] `shouldBe` Right [(If (Boolean False) ([(Declaration (Primitive Local TInt "y" Nothing))]) (Just ([(Print (Const 1))])))]
+      typeCheckingBlock [If (Boolean True) [Declaration (Primitive Local TInt "y" Nothing)] Nothing] (Scope [] []) [] `shouldBe` Right [If (Boolean True) [Declaration (Primitive Local TInt "y" Nothing)] Nothing]
+      typeCheckingBlock [If (Boolean False) [Declaration (Primitive Local TInt "y" Nothing)] (Just [Print (Const 1)])] (Scope [] []) [] `shouldBe` Right [If (Boolean False) [Declaration (Primitive Local TInt "y" Nothing)] (Just [Print (Const 1)])]
       -- should give error, because, the block tries to assign Int to Bool
-      typeCheckingBlock [(If (Boolean True) ([(Declaration (Primitive Local TBool "y" (Just (Var "x"))))]) Nothing)] (Scope [(HInt, "x")] []) [] `shouldSatisfy` isLeft
+      typeCheckingBlock [If (Boolean True) [Declaration (Primitive Local TBool "y" (Just (Var "x")))] Nothing] (Scope [(HInt, "x")] []) [] `shouldSatisfy` isLeft
 
     it "type checks a thread block" $ do
-      typeCheckingBlock [(Thread [(Declaration (Primitive Local TInt "y" Nothing)), (Print (Var "y"))])] (Scope [] []) [] `shouldBe` Right [(Thread [(Declaration (Primitive Local TInt "y" Nothing)), (Print (Var "y"))])]
+      typeCheckingBlock [Thread [Declaration (Primitive Local TInt "y" Nothing), Print (Var "y")]] (Scope [] []) [] `shouldBe` Right [Thread [Declaration (Primitive Local TInt "y" Nothing), Print (Var "y")]]
       -- should give error, because, inside of thread is not possible to declare Locks inside threads
-      typeCheckingBlock [(Thread [(Declaration (TLock "x")), (Print (Var "y"))])] (Scope [] []) [] `shouldSatisfy` isLeft
+      typeCheckingBlock [Thread [Declaration (TLock "x"), Print (Var "y")]] (Scope [] []) [] `shouldSatisfy` isLeft
       -- should give error, because, inside of thread is not possible to declare global variables inside threads
-      typeCheckingBlock [(Thread [(Declaration (Primitive Global TInt "x" Nothing)), (Print (Var "y"))])] (Scope [] []) [] `shouldSatisfy` isLeft
+      typeCheckingBlock [Thread [Declaration (Primitive Global TInt "x" Nothing), Print (Var "y")]] (Scope [] []) [] `shouldSatisfy` isLeft
 
     it "type checks a while block" $ do
-      typeCheckingBlock [(While (Boolean True) [(Assignment (Absolute "y" (Add (Var "y") (Const 1)))), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldBe` Right [(While (Boolean True) [(Assignment (Absolute "y" (Add (Var "y") (Const 1)))), (Print (Var "y"))])]
+      typeCheckingBlock [While (Boolean True) [Assignment (Absolute "y" (Add (Var "y") (Const 1))), Print (Var "y")]] (Scope [(HInt, "y")] []) [] `shouldBe` Right [While (Boolean True) [Assignment (Absolute "y" (Add (Var "y") (Const 1))), Print (Var "y")]]
       -- should give error, because, inside of thread is not possible to declare Locks inside while blocks
-      typeCheckingBlock [(While (Boolean True) [(Declaration (TLock "x")), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
+      typeCheckingBlock [While (Boolean True) [Declaration (TLock "x"), Print (Var "y")]] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
       -- should give error, because, inside of thread is not possible to declare global variables inside while blocks
-      typeCheckingBlock [(While (Boolean True) [(Declaration (Primitive Global TChar "c" Nothing)), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
+      typeCheckingBlock [While (Boolean True) [Declaration (Primitive Global TChar "c" Nothing), Print (Var "y")]] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
       -- should give error, because, inside of thread is not possible to declare threads inside while blocks
-      typeCheckingBlock [(While (Boolean True) [(Thread [Print (Var "y")]), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
-      
+      typeCheckingBlock [While (Boolean True) [Thread [Print (Var "y")], Print (Var "y")]] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
+
 
     it "checks redeclaration of a variable in the same scope" $ do
       checkReDeclaration [] [] `shouldBe` Right True
-      checkReDeclaration [(Declaration (Primitive Local TInt "x" Nothing)), (Declaration (TLock "x"))] [] `shouldSatisfy` isLeft
-      checkReDeclaration [(Declaration (Primitive Local TInt "x" Nothing)), (Block [Declaration (TLock "x")])] [] `shouldBe` Right True
-      checkReDeclaration [(Declaration (Primitive Local TInt "x" Nothing)), (Block [Declaration (TLock "y"), Declaration (Primitive Local TChar "y" Nothing)])] [] `shouldSatisfy` isLeft
-    
+      checkReDeclaration [Declaration (Primitive Local TInt "x" Nothing), Declaration (TLock "x")] [] `shouldSatisfy` isLeft
+      checkReDeclaration [Declaration (Primitive Local TInt "x" Nothing), Block [Declaration (TLock "x")]] [] `shouldBe` Right True
+      checkReDeclaration [Declaration (Primitive Local TInt "x" Nothing), Block [Declaration (TLock "y"), Declaration (Primitive Local TChar "y" Nothing)]] [] `shouldSatisfy` isLeft
+
     it "type checks a program" $ do
       let prog = Program
             [ Declaration (Primitive Local TInt "y" Nothing)
@@ -406,10 +385,10 @@ main = hspec $ do
                   , While (Lt (Expr (Var "y")) (Expr (Const 24)))
                       [ Declaration (Primitive Local TChar "y" (Just (Char 'c')))
                       ]
-                  ] 
-                  ( Just 
+                  ]
+                  ( Just
                     [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
-                    ] 
+                    ]
                   )
               , While (Lt (Expr (Var "y")) (Expr (Const 5)))
                   [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
@@ -433,10 +412,10 @@ main = hspec $ do
                   , While (Lt (Expr (Var "y_1")) (Expr (Const 24)))
                       [ Declaration (Primitive Local TChar "y_2" (Just (Char 'c')))
                       ]
-                  ] 
-                  ( Just 
+                  ]
+                  ( Just
                     [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
-                    ] 
+                    ]
                   )
               , While (Lt (Expr (Var "y")) (Expr (Const 5)))
                   [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
@@ -462,24 +441,71 @@ main = hspec $ do
 
   describe "Compilation" $ do
     it "prints a number" $ do
-      output <- runFile "printConst"
+      let fileName = "printConst"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       output `shouldBe` "Sprockell 0 says 101\n"
 
     it "prints a character" $ do
-      output <- runFile "printChar"
+      let fileName = "printChar"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       output `shouldBe` "Sprockell 0 says a\n"
 
     it "prints a boolean" $ do
       let expectedLines = [ "Sprockell 0 says true"
                           , "Sprockell 0 says false"
                           ]
-      output <- runFile "printBool"
+      let fileName = "printBool"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
       lines output `shouldBe` expectedLines
 
     it "prints Hello World!" $ do
       let expectedLines = [ "Sprockell 0 says Hello World!"
                           ]
-      output <- runFile "printHelloWorld"
+      let fileName = "printHelloWorld"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "prints nested variables" $ do
@@ -488,26 +514,74 @@ main = hspec $ do
                           , "Sprockell 0 says false"
                           , "Sprockell 0 says true"
                           ]
-      output <- runFile "printVars"
+      let fileName = "printVars"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "prints sum of two numbers" $ do
       let expectedLines = [ "Sprockell 0 says 3"
                           , "Sprockell 0 says 3"
                           ]
-      output <- runFile "addTwoNums"
+      let fileName = "addTwoNums"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "prints squared area of a triangle" $ do
       let expectedLines = [ "Sprockell 0 says 216" ]
-      output <- runFile "areaTriangle"
+      let fileName = "areaTriangle"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "swaps two variables" $ do
       let expectedLines = [ "Sprockell 0 says 10"
                           , "Sprockell 0 says 5"
                           ]
-      output <- runFile "swapVars"
+      let fileName = "swapVars"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests variable delcaration (int, bool, char)" $ do
@@ -518,7 +592,19 @@ main = hspec $ do
                           , "Sprockell 0 says false"
                           , "Sprockell 0 says true"
                           ]
-      output <- runFile "testVars"
+      let fileName = "testVars"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests assignment of expressions" $ do
@@ -530,7 +616,19 @@ main = hspec $ do
                           , "Sprockell 0 says true"
                           , "Sprockell 0 says false"
                           ]
-      output <- runFile "testExpr"
+      let fileName = "testExpr"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests boolean operations" $ do
@@ -550,7 +648,19 @@ main = hspec $ do
                           , "Sprockell 0 says 606"
                           , "Sprockell 0 says 999"
                           ]
-      output <- runFile "logicalOps"
+      let fileName = "logicalOps"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests conditionals" $ do
@@ -571,7 +681,19 @@ main = hspec $ do
                           , "Sprockell 0 says 32"
                           , "Sprockell 0 says 33"
                           ]
-      output <- runFile "testConditionals"
+      let fileName = "testConditionals"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests blocks/scopes" $ do
@@ -593,7 +715,19 @@ main = hspec $ do
                           , "Sprockell 0 says 15"
                           , "Sprockell 0 says 999"
                           ]
-      output <- runFile "blocks"
+      let fileName = "blocks"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests if and while" $ do
@@ -612,7 +746,19 @@ main = hspec $ do
                           , "Sprockell 0 says 1"
                           , "Sprockell 0 says 999"
                           ]
-      output <- runFile "checkIfWhile"
+      let fileName = "checkIfWhile"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests signed division (a/b; -a/b; a/-b; -a/-b; 0/b; a/b)" $ do
@@ -629,7 +775,19 @@ main = hspec $ do
                           , "Sprockell 0 says Division of zero by 5:"
                           , "Sprockell 0 says 0"
                           ]
-      output <- runFile "testDivision"
+      let fileName = "testDivision"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     -- this test takes more than others (around 1.5 sec) because of division of big numbers (1000000 / 3)
@@ -657,7 +815,19 @@ main = hspec $ do
                           , "Sprockell 0 says 68"
                           , "Sprockell 0 says 0"
                           ]
-      output <- runFile "testArithmetic"
+      let fileName = "testArithmetic"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests variable shadowing" $ do
@@ -671,14 +841,38 @@ main = hspec $ do
                           , "Sprockell 3 says 50"
                           , "Sprockell 3 says W"
                           ]
-      output <- runFile "testVarShadowing"
+      let fileName = "testVarShadowing"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests fib(15) and fib(30)" $ do
       let expectedLines = [ "Sprockell 0 says 610"
                           , "Sprockell 0 says 832040"
                           ]
-      output <- runFile "fib"
+      let fileName = "fib"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests threads and locks" $ do
@@ -701,16 +895,53 @@ main = hspec $ do
                           , "Sprockell 0 says Final y"
                           , "Sprockell 0 says 23"
                           ]
-      output <- runFile "testThreads"
+      let fileName = "testThreads"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       lines output `shouldBe` expectedLines
 
     it "tests multiple (4) locks" $ do
-      output <- runFile "locks"
+      let fileName = "locks"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
       let lastValue = take 2 $ drop (length output - 3) output
       lastValue `shouldBe` "25"
 
     it "tests concurrency with Peterson's algorithm (for 2 threads)" $ do
-      output <- runFile "peterson"
+      let fileName = "peterson"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       -- evaluate the final value of the critical variable
       let secondLastChar = output !! (length output - 2)
       secondLastChar `shouldBe` '0'
@@ -720,77 +951,188 @@ main = hspec $ do
                           , "Sprockell 0 says -5050"
                           , "Sprockell 0 says 7050"
                           ]
-      output <- runFile "banking"
+      let fileName = "banking"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
       let ls = lines output
       let last3 = drop (length ls - 3) ls
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
       last3 `shouldBe` expectedLines
 
-    -- NO IDEA WHY THESE TESTS ARE NOT DISPLAYED IN CONSOLE
-    -- THEY ALSO REMOVE ALL OUTPUT OF FOLLOWING TESTS 
-    -- they also remove the "Finished in n seconds" message
+    it "tests operations (+, -, *, /, &&, ||) when stack is full" $ do
+      -- we use stack.push which overwrites the last values of the stack (if it is full)
+      let expectedLines = [ "Sprockell 0 says 10"
+                          , "Sprockell 0 says 0"
+                          , "Sprockell 0 says 24"
+                          , "Sprockell 0 says 2"
+                          , "Sprockell 0 says false"
+                          , "Sprockell 0 says true"
+                          , "Sprockell 0 says 2"
+                          , "Sprockell 0 says 0"
+                          ]
+      let fileName = "testFullStack"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runFile fileName fileName
+
+      -- append output to log file
+      let toWrite = outGen ++ output
+      appendFile (logsDir ++ fileName ++ logExt) toWrite
+
+      lines output `shouldBe` expectedLines
+
     it "tests infinite loops (while)" $ do
-      output <- timeout (1 * 10^6) $ compile $ programsDir ++ "testInfiniteWhile.txt"
+      let fileName = "testInfiniteWhile"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- timeout (1 * 10^6) $ compile (progsDir ++ fileName ++ fileExt) fileName
       output `shouldBe` Nothing
+      -- this test contains no output
 
     it "tests infinite loops (locks)" $ do
-      output <- timeout (1 * 10^6) $ compile $ programsDir ++ "testInfLock.txt"
+      let fileName = "testInfLock"
+
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcHead ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- timeout (1 * 10^6) $ compile (progsDir ++ fileName ++ fileExt) fileName
       output `shouldBe` Nothing
+      -- this test contains no output
 
     it "fails to declare a variable with incorrect type" $ do
-        let program = "ints x;"
-        output <- runStr program
-        let res = "ParseError" `isPrefixOf` output
-        res `shouldBe` True
+      let program = "ints x;"
+
+      -- write src code to log file
+      let fileName = "failDecl"
+      let toWrite = srcHead ++ program
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runStr program "failDecl"
+      let res = "ParseError" `isPrefixOf` output
+      res `shouldBe` True
+      -- this test contains no output and no generated code
 
     it "fails to reference an undeclared variable in assignment" $ do
-        let program = "int x = y + 1;"
-        output <- runStr program
-        let res = "TypeError" `isPrefixOf` output
-        res `shouldBe` True
+      let program = "int x = y + 1;"
+
+      -- write src code to log file
+      let fileName = "failRef"
+      let toWrite = srcHead ++ program
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runStr program "failRef"
+      let res = "TypeError" `isPrefixOf` output
+      res `shouldBe` True
+      -- this test contains no output and no generated code
 
     it "fails to use correct operator" $ do
-        let program = "int x = 5 ** 2;"
-        output <- runStr program
-        let res = "ParseError" `isPrefixOf` output
-        res `shouldBe` True
+      let program = "int x = 5 ** 2;"
+
+      -- write src code to log file
+      let fileName = "failOp"
+      let toWrite = srcHead ++ program
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runStr program "failOp"
+      let res = "ParseError" `isPrefixOf` output
+      res `shouldBe` True
+      -- this test contains no output and no generated code
 
     it "fails to close braces properly" $ do
-        let program = "int x = { 5 + 2;"
-        output <- runStr program
-        let res = "ParseError" `isPrefixOf` output
-        res `shouldBe` True
+      let program = "int x = { 5 + 2;"
+
+      -- write src code to log file
+      let fileName = "failBrace"
+      let toWrite = srcHead ++ program
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runStr program "failBrace"
+      let res = "ParseError" `isPrefixOf` output
+      res `shouldBe` True
+      -- this test contains no output and no generated code
 
     it "fails to match types in assignment" $ do
-        let program = "char x = 99;"
-        output <- runStr program
-        let res = "TypeError" `isPrefixOf` output
-        res `shouldBe` True
+      let program = "char x = 99;"
+
+      -- write src code to log file
+      let fileName = "failAssign"
+      let toWrite = srcHead ++ program
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      output <- runStr program fileName
+      let res = "TypeError" `isPrefixOf` output
+      res `shouldBe` True
+      -- this test contains no output and no generated code
 
     it "fails to allocate more than 8 shared variables" $ do
-        let program =    "global int a1;"
-                      ++ "global int a2;"
-                      ++ "global int a3;"
-                      ++ "global int a4;"
-                      ++ "global int a5;"
-                      ++ "global int a6;"
-                      ++ "global int a7;"
-                      ++ "global int a8;"
-                      ++ "global int a9;"
-                      ++ "print(a9);"
-        -- output <- runStr program
-        -- let res = "CallStack" `isPrefixOf` output
-        res <- try (evaluate program) :: IO (Either SomeException ())
-        isLeft res `shouldBe` True
-        -- res `shouldBe` True
+      let program =    "global int a1;"
+                    ++ "global int a2;"
+                    ++ "global int a3;"
+                    ++ "global int a4;"
+                    ++ "global int a5;"
+                    ++ "global int a6;"
+                    ++ "global int a7;"
+                    ++ "global int a8;"
+                    ++ "global int a9;"
+                    ++ "print(a9);"
+
+      -- write src code to log file and no generated code
+      let fileName = "failShMem"
+      let toWrite = srcHead ++ program
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      res <- try (evaluate program fileName) :: IO (Either SomeException ())
+      isLeft res `shouldBe` True
+      -- this test contains no output
+
+    it "fails to allocate more than 32 local variables" $ do
+      let fileName = "failLocalMem"
+      -- write src code to log file
+      srcLine <- readFile (progsDir ++ fileName ++ fileExt)
+      let toWrite = srcLine ++ srcLine
+      writeFile (logsDir ++ fileName ++ logExt) toWrite
+
+      res <- try (compile fileName fileName) :: IO (Either SomeException ())
+      isLeft res `shouldBe` True
+      -- this test contains no output
 
 
-  ----------------------------------------------------------------------
-  --                         HELPER FUNCTIONS                         --
-  ----------------------------------------------------------------------
+----------------------------------------------------------------------
+--                         HELPER FUNCTIONS                         --
+----------------------------------------------------------------------
+
+-- headers for sections in log files
+srcHead :: String
+srcHead = "--------------- SOURCE CODE ---------------\n"
+
+genHead :: String
+genHead = "\n\n------------- GENERATED CODE -------------\n"
+
+outGen :: String
+outGen = "\n\n----------------- OUTPUT -----------------\n"
 
 -- path to programs directory
-programsDir :: FilePath
-programsDir = "./test/programs/"
+progsDir :: FilePath
+progsDir = "./test/programs/"
 
 -- path to logs directory
 logsDir :: FilePath
@@ -804,28 +1146,31 @@ logExt = ".log"
 fileExt :: String
 fileExt = ".txt"
 
+
 -- runFile - compile file and catch output
-runFile :: FilePath -> IO String
-runFile path = catchOutput $ compile (programsDir ++ path ++ fileExt)
+runFile :: FilePath -> String -> IO String
+runFile path logName = redirectOutput $ compile (progsDir ++ path ++ fileExt) logName
+
 
 -- runStr - compile string and catch output
-runStr :: String -> IO String
-runStr str = catchOutput $ evaluate str
+runStr :: String -> String -> IO String
+runStr str logName = redirectOutput $ evaluate str logName
+
 
 -- function to compile files
-compile :: FilePath -> IO ()
-compile filePath = do
+compile :: FilePath -> String -> IO ()
+compile filePath logName = do
   input <- readFile filePath
-  evaluate input
+  evaluate input logName
+
 
 -- function to evaluate input (parse, elaborate, gen code)
-evaluate :: String -> IO ()
-evaluate input = do
+evaluate :: String -> String -> IO ()
+evaluate input logName = do
   let output = createAST input
   case output of
       -- error
-      Left  err -> do
-          print err
+      Left  err -> print err
 
       -- compile ast
       Right ast -> do
@@ -833,28 +1178,25 @@ evaluate input = do
           let threads = mainCode env : threadsCode env
           -- putStrLn $ "Main Code: " ++ show (mainCode env)
           -- putStrLn $ "Threads code: " ++ show (threadsCode env)
+          let toAppend = genHead ++ formatThreads threads
+          -- append generated code to log file
+          appendFile (logsDir ++ logName ++ logExt) toAppend
           Sprockell.run threads
 
 
--- capture the output of an IO action that writes to "stdout"
--- catchOutput :: IO () -> IO String
--- catchOutput f = do
---   tmpd <- getTemporaryDirectory
---   (tmpf, tmph) <- openTempFile tmpd "haskell_stdout"
---   stdout_dup <- hDuplicate stdout
---   hDuplicateTo tmph stdout
---   hClose tmph
---   f
---   hFlush stdout
---   hDuplicateTo stdout_dup stdout
---   hClose stdout_dup
---   -- str <- readFile tmpf
---   -- removeFile tmpf      -- when removing the file an exception is thrown because it is still being read (idk how to fix this)
---   -- return str
---   readFile tmpf
+-- helper function to format threads
+formatThreads :: [[Sprockell.Instruction]] -> String
+formatThreads threads = "[[" ++ intercalate "],\n [" (map showThread threads) ++ "\n]]"
 
-catchOutput :: IO () -> IO String
-catchOutput f = do
+
+-- helper function to show each thread's instructions
+showThread :: [Sprockell.Instruction] -> String
+showThread instructions = intercalate ",\n  " (map show instructions)
+
+
+-- redirect the output of an IO action that writes to "stdout"
+redirectOutput :: IO () -> IO String
+redirectOutput f = do
   tmpd <- getTemporaryDirectory
   (tmpf, tmph) <- openTempFile tmpd "haskell_stdout"
   stdout_dup <- hDuplicate stdout
