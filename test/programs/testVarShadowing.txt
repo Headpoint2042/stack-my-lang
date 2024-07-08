@@ -27,12 +27,6 @@ thread {
                 print("possible");
                 print(x);
             }
-            if (x == 'w') {
-                print("impossible");
-            } else {
-                print("possible");
-                print(x);
-            }
 
             thread {
                 int x = 50;

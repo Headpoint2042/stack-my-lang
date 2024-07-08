@@ -1,8 +1,11 @@
-int x = 10;
+global int a1;
+global int a2;
+global int a3;
+global int a4;
+global int a5;
+global int a6;
+global int a7;
+global int a8;
+global int a9;
 
-{
-    bool x = (x == 10);
-    print(x);
-}
-
-print(x);
+print(a9);
