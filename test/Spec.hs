@@ -15,6 +15,7 @@ import GHC.IO.Handle
 import System.IO
 import System.Directory
 import System.Timeout
+import Control.Exception (try, catch, SomeException)
 
 
 main :: IO ()
@@ -605,13 +606,13 @@ main = hspec $ do
     -- NO IDEA WHY THESE TESTS ARE NOT DISPLAYED IN CONSOLE
     -- THEY ALSO REMOVE ALL OUTPUT OF FOLLOWING TESTS 
     -- they also remove the "Finished in n seconds" message
-    -- it "tests infinite loops (while)" $ do
-    --   output <- timeout (1 * 10^6) $ runFile "testInfiniteWhile"
-    --   output `shouldBe` Nothing
+    it "tests infinite loops (while)" $ do
+      output <- timeout (1 * 10^6) $ compile $ programsDir ++ "testInfiniteWhile.txt"
+      output `shouldBe` Nothing
 
-    -- it "tests infinite loops (locks)" $ do
-    --   output <- timeout (1 * 10^6) $ runFile "testInfLock"
-    --   output `shouldBe` Nothing
+    it "tests infinite loops (locks)" $ do
+      output <- timeout (1 * 10^6) $ compile $ programsDir ++ "testInfLock.txt"
+      output `shouldBe` Nothing
 
     it "fails to declare a variable with incorrect type" $ do
         let program = "ints x;"
@@ -643,20 +644,22 @@ main = hspec $ do
         let res = "TypeError" `isPrefixOf` output
         res `shouldBe` True
 
-    -- it "fails to allocate more than 8 shared variables" $ do
-    --     let program =    "global int a1;"
-    --                   ++ "global int a2;"
-    --                   ++ "global int a3;"
-    --                   ++ "global int a4;"
-    --                   ++ "global int a5;"
-    --                   ++ "global int a6;"
-    --                   ++ "global int a7;"
-    --                   ++ "global int a8;"
-    --                   ++ "global int a9;"
-    --                   ++ "print(a9);"
-    --     output <- runStr program
-    --     let res = "CallStack" `isPrefixOf` output
-    --     res `shouldBe` True
+    it "fails to allocate more than 8 shared variables" $ do
+        let program =    "global int a1;"
+                      ++ "global int a2;"
+                      ++ "global int a3;"
+                      ++ "global int a4;"
+                      ++ "global int a5;"
+                      ++ "global int a6;"
+                      ++ "global int a7;"
+                      ++ "global int a8;"
+                      ++ "global int a9;"
+                      ++ "print(a9);"
+        -- output <- runStr program
+        -- let res = "CallStack" `isPrefixOf` output
+        res <- try (evaluate program) :: IO (Either SomeException ())
+        isLeft res `shouldBe` True
+        -- res `shouldBe` True
 
 
   ----------------------------------------------------------------------
@@ -666,6 +669,14 @@ main = hspec $ do
 -- path to programs directory
 programsDir :: FilePath
 programsDir = "./test/programs/"
+
+-- path to logs directory
+logsDir :: FilePath
+logsDir = "./test/logs/"
+
+-- extenstion for log files
+logExt :: String
+logExt = ".log"
 
 -- string to hold the file extension
 fileExt :: String
@@ -704,6 +715,22 @@ evaluate input = do
 
 
 -- capture the output of an IO action that writes to "stdout"
+-- catchOutput :: IO () -> IO String
+-- catchOutput f = do
+--   tmpd <- getTemporaryDirectory
+--   (tmpf, tmph) <- openTempFile tmpd "haskell_stdout"
+--   stdout_dup <- hDuplicate stdout
+--   hDuplicateTo tmph stdout
+--   hClose tmph
+--   f
+--   hFlush stdout
+--   hDuplicateTo stdout_dup stdout
+--   hClose stdout_dup
+--   -- str <- readFile tmpf
+--   -- removeFile tmpf      -- when removing the file an exception is thrown because it is still being read (idk how to fix this)
+--   -- return str
+--   readFile tmpf
+
 catchOutput :: IO () -> IO String
 catchOutput f = do
   tmpd <- getTemporaryDirectory

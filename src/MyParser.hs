@@ -879,6 +879,10 @@ renameCond name newName (Ge cond1 cond2) = Ge (renameCond name newName cond1) (r
 renameCond name newName (Le cond1 cond2) = Le (renameCond name newName cond1) (renameCond name newName cond2)
 renameCond name newName (And cond1 cond2) = And (renameCond name newName cond1) (renameCond name newName cond2)
 renameCond name newName (Or cond1 cond2) = Or (renameCond name newName cond1) (renameCond name newName cond2)
+-- renameCond name newName x = case x of 
+--       Eq cond1 cond2 -> Eq (renameCond' cond1) (renameCond' cond2)
+--    where 
+--       renameCond' = renameCond name newName 
 
 renameCond name newName (Not cond) = Not (renameCond name newName cond)
 renameCond name newName (Expr expr) = Expr (renameExpr name newName expr)

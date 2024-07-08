@@ -9,7 +9,7 @@ thread {
     }
 }
 
-print("print this");
+//print("print this");
 
 l.lock;
-print("do not print this");
+//print("do not print this");

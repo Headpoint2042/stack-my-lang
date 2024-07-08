@@ -81,50 +81,6 @@ addGlobalVariable env typ name =
 --               CODE GENERATION                --
 --------------------------------------------------
 
--- sampleAST :: MyParser.Program
--- sampleAST = MyParser.Program
---   [MyParser.Declaration
---     (MyParser.Primitive MyParser.Local MyParser.TInt "x" Nothing),
---      MyParser.Print (MyParser.Var "x")]
-
--- add2numsAST :: MyParser.Program
--- add2numsAST = MyParser.Program [
---          MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Const 1))),
---          MyParser.Declaration (MyParser.Primitive MyParser.Global MyParser.TInt "y" (Just (MyParser.Const 2))),
---          MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "z" Nothing),
---          MyParser.Assignment (MyParser.Absolute "z" (MyParser.Add (MyParser.Var "x") (MyParser.Var "y"))),
---          MyParser.Print (MyParser.Var "z")]
-
--- areatrAST :: MyParser.Program
--- areatrAST = MyParser.Program [
---     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "a" (Just (MyParser.Const 5))),
---     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "b" (Just (MyParser.Const 6))),
---     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "c" (Just (MyParser.Const 7))),
---     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "s" (Just (MyParser.Add (MyParser.Add (MyParser.Var "a") (MyParser.Var "b")) (MyParser.Var "c")))),
---     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "x" (Just (MyParser.Sub (MyParser.Sub (MyParser.Var "a") (MyParser.Var "b")) (MyParser.Var "c")))),
---     MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TInt "area" (Just (MyParser.Mult (MyParser.Mult (MyParser.Mult (MyParser.Var "s") (MyParser.Sub (MyParser.Var "s") (MyParser.Var "a"))) (MyParser.Sub (MyParser.Var "s") (MyParser.Var "b"))) (MyParser.Sub (MyParser.Var "s") (MyParser.Var "c"))))),
---     MyParser.Print (MyParser.Var "s")
---     , MyParser.Print (MyParser.Var "x")
---     , MyParser.Print (MyParser.Var "area")
---     , MyParser.Print (MyParser.Char 'a')
---     , MyParser.Declaration (MyParser.Primitive MyParser.Local MyParser.TChar "d" (Just (MyParser.Char 'z')))
---     , MyParser.Print (MyParser.Var "d")
---     ]
-
-
-
-
--- printMainCode :: Env -> IO ()
--- printMainCode env = putStrLn $ "Main Code: " ++ show (mainCode env)
-
--- -- TODO: REMOVE TESTING MAIN
--- main :: IO ()
--- main = do
---   let env = compileProgram areatrAST
---   printMainCode env
---   run [mainCode env]
-
-
 -- compile code for Program Block
 compileProgram :: MyParser.Program -> Env
 compileProgram (MyParser.Program programBlock) =
@@ -674,14 +630,15 @@ genBoolCond :: Env -> Bool -> RegAddr -> [Instruction]
 genBoolCond env bool reg = [loadI (toInteger $ fromEnum bool) reg]
 
 
--------------------------------------------------------
+------------------------------------------------------
 --               SPROCKELL EXTENSIONS               --
--------------------------------------------------------
+------------------------------------------------------
 
 ------------------------------
 --     Manage Registers     --
 ------------------------------
 
+-- initial state of free registers
 initRegs :: [RegAddr]
 initRegs = [regA, regB, regC, regD, regE, regF]
 
