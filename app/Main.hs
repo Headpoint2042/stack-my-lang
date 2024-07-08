@@ -1,6 +1,7 @@
 module Main where
 
 import MyParser
+import MyElaborator
 import MyCodeGen
 import Sprockell
 

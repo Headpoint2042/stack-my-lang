@@ -1,6 +1,7 @@
 -- module Spec where
 
 import MyParser
+import MyElaborator
 import MyCodeGen
 import qualified Sprockell
 

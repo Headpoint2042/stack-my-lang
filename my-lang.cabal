@@ -20,6 +20,7 @@ library
   exposed-modules:
       MyCodeGen
       MyParser
+      MyElaborator
   other-modules:
       Paths_my_lang
   hs-source-dirs:
