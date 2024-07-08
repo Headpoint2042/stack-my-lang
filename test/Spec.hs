@@ -328,10 +328,132 @@ main = hspec $ do
                   ]
               ]
       renameVar "x" "y" input `shouldBe` expected
-    -- it "" $ do
 
+    it "type checks an expression" $ do
+      typeCheckingExpr (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))) [HInt] (Scope [(HInt, "x"), (HInt, "y")] [])
+        `shouldBe` Right HInt
 
+    it "type checks a condition" $ do
+      typeCheckingCond (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Const 2))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))) [HBool] (Scope [(HInt, "x"), (HInt, "y"), (HInt, "z")] [])
+        `shouldBe` Right HBool
 
+    it "type checks an invalid expression" $ do
+      typeCheckingExpr (Div (Mult (Const 3) (Add (Var "x") (Const 4))) (Sub (Const 2) (Var "y"))) [HInt] (Scope [(HInt, "x"), (HChar, "y")] [])
+        `shouldSatisfy` isLeft
+
+    it "type checks an invalid condition" $ do
+      typeCheckingCond (And (Expr (Condition (Or (Gt (Expr (Var "x")) (Expr (Condition (Boolean True)))) (Lt (Expr (Var "y")) (Expr (Const 5)))))) (Eq (Expr (Var "z")) (Expr (Const 10)))) [HBool] (Scope [(HInt, "x"), (HChar, "y"), (HBool, "z")] [])
+        `shouldSatisfy` isLeft
+
+    it "type checks an expression with different data types" $ do
+      typeCheckingExpr (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))) [HBool] (Scope [(HInt, "x"), (HBool, "y")] [])
+        `shouldBe` Right HBool
+
+    it "type checks declaration" $ do
+      typeCheckingBlock [(Declaration (Primitive Local TInt "y" Nothing))] (Scope [] []) []
+        `shouldBe` Right [(Declaration (Primitive Local TInt "y" Nothing))]
+      typeCheckingBlock [(Declaration (Primitive Global TBool "x" (Just (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))))))] (Scope [(HInt, "x"), (HBool, "y")] [Scope [] []]) []
+        `shouldBe` Right [(Declaration (Primitive Global TBool "x_1" (Just (Condition (Eq (Eq (Expr (Var "x")) (Expr (Const 3))) (Expr (Var "y")))))))]
+
+    it "type checks an assignment" $ do
+      typeCheckingBlock [(Assignment (Absolute "y" (Add (Var "y") (Const 1))))] (Scope [(HInt, "y")] []) []
+        `shouldBe` Right [(Assignment (Absolute "y" (Add (Var "y") (Const 1))))]
+      typeCheckingBlock [(Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True)))))))] (Scope [(HBool, "x")] []) []
+        `shouldBe` Right [(Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True)))))))]
+      -- should give error, because, tries to compare integer with boolean
+      typeCheckingBlock [(Assignment (Absolute "x" (Condition (Eq (Expr (Var "x")) (Expr (Condition (Boolean True)))))))] (Scope [(HInt, "x")] []) []
+        `shouldSatisfy` isLeft
+
+    it "checks for shadowing" $ do
+      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [(Scope [(HChar, "c")] [(Scope [] [])])]) "x" `shouldBe` True
+      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [(Scope [(HChar, "c")] [(Scope [] [])])]) "c" `shouldBe` True
+      checkShadowing (Scope [(HInt, "x"), (HInt, "y")] [(Scope [(HChar, "c")] [(Scope [] [])])]) "f" `shouldBe` False
+
+    it "type checks a if statement" $ do
+      typeCheckingBlock [(If (Boolean True) ([(Declaration (Primitive Local TInt "y" Nothing))]) Nothing)] (Scope [] []) [] `shouldBe` Right [(If (Boolean True) ([(Declaration (Primitive Local TInt "y" Nothing))]) Nothing)]
+      typeCheckingBlock [(If (Boolean False) ([(Declaration (Primitive Local TInt "y" Nothing))]) (Just ([(Print (Const 1))])))] (Scope [] []) [] `shouldBe` Right [(If (Boolean False) ([(Declaration (Primitive Local TInt "y" Nothing))]) (Just ([(Print (Const 1))])))]
+      -- should give error, because, the block tries to assign Int to Bool
+      typeCheckingBlock [(If (Boolean True) ([(Declaration (Primitive Local TBool "y" (Just (Var "x"))))]) Nothing)] (Scope [(HInt, "x")] []) [] `shouldSatisfy` isLeft
+
+    it "type checks a thread block" $ do
+      typeCheckingBlock [(Thread [(Declaration (Primitive Local TInt "y" Nothing)), (Print (Var "y"))])] (Scope [] []) [] `shouldBe` Right [(Thread [(Declaration (Primitive Local TInt "y" Nothing)), (Print (Var "y"))])]
+      -- should give error, because, inside of thread is not possible to declare Locks inside threads
+      typeCheckingBlock [(Thread [(Declaration (TLock "x")), (Print (Var "y"))])] (Scope [] []) [] `shouldSatisfy` isLeft
+      -- should give error, because, inside of thread is not possible to declare global variables inside threads
+      typeCheckingBlock [(Thread [(Declaration (Primitive Global TInt "x" Nothing)), (Print (Var "y"))])] (Scope [] []) [] `shouldSatisfy` isLeft
+
+    it "type checks a while block" $ do
+      typeCheckingBlock [(While (Boolean True) [(Assignment (Absolute "y" (Add (Var "y") (Const 1)))), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldBe` Right [(While (Boolean True) [(Assignment (Absolute "y" (Add (Var "y") (Const 1)))), (Print (Var "y"))])]
+      -- should give error, because, inside of thread is not possible to declare Locks inside while blocks
+      typeCheckingBlock [(While (Boolean True) [(Declaration (TLock "x")), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
+      -- should give error, because, inside of thread is not possible to declare global variables inside while blocks
+      typeCheckingBlock [(While (Boolean True) [(Declaration (Primitive Global TChar "c" Nothing)), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
+      -- should give error, because, inside of thread is not possible to declare threads inside while blocks
+      typeCheckingBlock [(While (Boolean True) [(Thread [Print (Var "y")]), (Print (Var "y"))])] (Scope [(HInt, "y")] []) [] `shouldSatisfy` isLeft
+      
+
+    it "checks redeclaration of a variable in the same scope" $ do
+      checkReDeclaration [] [] `shouldBe` Right True
+      checkReDeclaration [(Declaration (Primitive Local TInt "x" Nothing)), (Declaration (TLock "x"))] [] `shouldSatisfy` isLeft
+      checkReDeclaration [(Declaration (Primitive Local TInt "x" Nothing)), (Block [Declaration (TLock "x")])] [] `shouldBe` Right True
+      checkReDeclaration [(Declaration (Primitive Local TInt "x" Nothing)), (Block [Declaration (TLock "y"), Declaration (Primitive Local TChar "y" Nothing)])] [] `shouldSatisfy` isLeft
+    
+    it "type checks a program" $ do
+      let prog = Program
+            [ Declaration (Primitive Local TInt "y" Nothing)
+              , If (Gt (Expr (Var "y")) (Expr (Const 2)))
+                  [ Declaration (Primitive Local TInt "y" (Just (Const 12)))
+                  , While (Lt (Expr (Var "y")) (Expr (Const 24)))
+                      [ Declaration (Primitive Local TChar "y" (Just (Char 'c')))
+                      ]
+                  ] 
+                  ( Just 
+                    [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
+                    ] 
+                  )
+              , While (Lt (Expr (Var "y")) (Expr (Const 5)))
+                  [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
+                  , Print (Var "y")
+                  ]
+              , Declaration (Primitive Local TBool "b"
+                  (Just (Condition (Eq (Expr (Sub (Var "y") (Mult (Const 2) (Const 16))))
+                                    (Expr (Mult (Const 3) (Var "y")))))))
+              , Thread
+                  [ Declaration (Primitive Local TInt "y" (Just (Const 0)))
+                  ]
+              , Print (Condition (And (Expr (Var "b")) (Expr (Var "b"))))
+              , Block
+                  [ Assignment (Absolute "y" (Add (Const 24) (Var "y")))
+                  ]
+              ]
+      let expected = Program
+            [ Declaration (Primitive Local TInt "y" Nothing)
+              , If (Gt (Expr (Var "y")) (Expr (Const 2)))
+                  [ Declaration (Primitive Local TInt "y_1" (Just (Const 12)))
+                  , While (Lt (Expr (Var "y_1")) (Expr (Const 24)))
+                      [ Declaration (Primitive Local TChar "y_2" (Just (Char 'c')))
+                      ]
+                  ] 
+                  ( Just 
+                    [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
+                    ] 
+                  )
+              , While (Lt (Expr (Var "y")) (Expr (Const 5)))
+                  [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
+                  , Print (Var "y")
+                  ]
+              , Declaration (Primitive Local TBool "b"
+                  (Just (Condition (Eq (Expr (Sub (Var "y") (Mult (Const 2) (Const 16))))
+                                    (Expr (Mult (Const 3) (Var "y")))))))
+              , Thread
+                  [ Declaration (Primitive Local TInt "y_1" (Just (Const 0)))
+                  ]
+              , Print (Condition (And (Expr (Var "b")) (Expr (Var "b"))))
+              , Block
+                  [ Assignment (Absolute "y" (Add (Const 24) (Var "y")))
+                  ]
+              ]
+      typeCheckProgram prog `shouldBe` Right expected
 
 
   -------------------------------------------------------------------------------------------------------------------
