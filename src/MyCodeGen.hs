@@ -557,7 +557,7 @@ genDiv env n d reg =
           Pop regD                        -- regD = D
         , loadI 0 regQ                    -- regQ = 0
         , Compute Equal regD reg0 regTmp  -- regTmp = (regD == 0)
-        , branchRel regTmp 35             -- if regD == 0, branch to end (skip div)
+        , branchRel regTmp 30             -- if regD == 0, branch to end (skip div)
 
         -- if D < 0 then (Q, R) := divide(N, −D); return (−Q, R) end
         , Push reg0                       -- push negQ = 0 on stack
@@ -591,16 +591,9 @@ genDiv env n d reg =
         -- checkR
         , Pop regTmp                      -- pop checkR
         , flipReg regTmp                  -- flip checkR for branch
-        , branchRel regTmp 8              -- if checkR == 0, branch to negQ
-        -- if R = 0 then return (−Q, 0)
-        , Compute NEq regR reg0 regTmp
-        , branchRel regTmp 2              -- if regR != 0, branch to else
+        , branchRel regTmp 2              -- if checkR == 0, branch to negQ
+        -- if R = 0 then return (−Q, 0) else return (−Q − 1, D − R) 
         , negateReg regQ                  -- regQ = -regQ
-        , jumpRel 4                       -- skip else and jump to negQ
-        -- else
-        , negateReg regQ                  --  regQ = -regQ
-        , loadI 1 regTmp
-        , Compute Sub regQ regTmp regQ    -- regQ -= 1
 
         -- negQ
         , Pop regTmp                      -- pop negQ

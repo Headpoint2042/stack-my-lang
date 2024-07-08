@@ -10,12 +10,12 @@ import Test.QuickCheck
 import Text.Parsec (parse)
 import Text.Parsec.String (Parser)
 import Data.Either
+import Data.List
 import GHC.IO.Handle
 import System.IO
 import System.Directory
 import System.Timeout
 
--- `shouldSatisfy` isLeft -> means an error was returned
 
 main :: IO ()
 main = hspec $ do
@@ -24,6 +24,7 @@ main = hspec $ do
   --                                                  PARSING                                                  --
   ---------------------------------------------------------------------------------------------------------------
 
+  -- `shouldSatisfy` isLeft -> means an error was returned
   describe "Parsing" $ do
     -- it "should parse numbers" $ do
     --     property $ \n -> (parseMyLang $ show (getPositive n)) `shouldBe` (Right (getPositive n) :: Either String Integer)
@@ -62,7 +63,7 @@ main = hspec $ do
 
     it "parses an assignment" $ do
       parse assignment "" "x = 10" `shouldBe` Right (Absolute "x" (Const 10))
-                                                                         
+
     it "parses a condition" $ do
       parse condition "" "true && false" `shouldBe` Right (And (Expr (Condition (Boolean True))) (Expr (Condition (Boolean False))))
       parse condition "" "true || false" `shouldBe` Right (Or (Expr (Condition (Boolean True))) (Expr (Condition (Boolean False))))
@@ -86,7 +87,7 @@ main = hspec $ do
       parse parseChar "" "'a'" `shouldBe` Right (Char 'a')
 
     it "parses an expression" $ do
-      parse expr "" "((1 + 2) * (3 - 4)) / ((5 * 6) / 7)" `shouldBe` 
+      parse expr "" "((1 + 2) * (3 - 4)) / ((5 * 6) / 7)" `shouldBe`
         Right (Div (Mult (Add (Const 1) (Const 2)) (Sub (Const 3) (Const 4))) (Div (Mult (Const 5) (Const 6)) (Const 7)))
 
       parse expr "" "3 * (x + 4) / (2 - y)" `shouldBe`
@@ -151,7 +152,7 @@ main = hspec $ do
       parse statement "" "x = " `shouldSatisfy` isLeft
 
     it "parses a program" $ do
-      parse program "" "int x = 5; x = 10; " `shouldBe` Right (Program [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ]) 
+      parse program "" "int x = 5; x = 10; " `shouldBe` Right (Program [ Declaration (Primitive Local TInt "x" (Just (Const 5))), Assignment (Absolute "x" (Const 10)) ])
       parse program "" "int x = 5; thread { x = x + 1; { int y = 10; y = y + 2; } }" `shouldBe`
         Right (Program
           [ Declaration (Primitive Local TInt "x" (Just (Const 5)))
@@ -241,10 +242,10 @@ main = hspec $ do
                   , While (Lt (Expr (Var "x")) (Expr (Const 24)))
                       [ Declaration (Primitive Local TChar "x" (Just (Char 'c')))
                       ]
-                  ] 
-                  ( Just 
+                  ]
+                  ( Just
                     [ Assignment (Absolute "y" (Add (Var "x") (Const 1)))
-                    ] 
+                    ]
                   )
               , While (Lt (Expr (Var "x")) (Expr (Const 5)))
                   [ Assignment (Absolute "x" (Add (Var "x") (Const 1)))
@@ -278,10 +279,10 @@ main = hspec $ do
                   , While (Lt (Expr (Var "x")) (Expr (Const 24)))
                       [ Declaration (Primitive Local TChar "x" (Just (Char 'c')))
                       ]
-                  ] 
-                  ( Just 
+                  ]
+                  ( Just
                     [ Assignment (Absolute "y" (Add (Var "x") (Const 1)))
-                    ] 
+                    ]
                   )
               , While (Lt (Expr (Var "x")) (Expr (Const 5)))
                   [ Assignment (Absolute "x" (Add (Var "x") (Const 1)))
@@ -298,17 +299,17 @@ main = hspec $ do
                   [ Assignment (Absolute "y" (Add (Const 24) (Var "x")))
                   ]
               ]
-      let expected =  
+      let expected =
             [ Declaration (Primitive Local TInt "y" Nothing)
               , If (Gt (Expr (Var "y")) (Expr (Const 2)))
                   [ Declaration (Primitive Local TInt "y" (Just (Const 12)))
                   , While (Lt (Expr (Var "y")) (Expr (Const 24)))
                       [ Declaration (Primitive Local TChar "y" (Just (Char 'c')))
                       ]
-                  ] 
-                  ( Just 
+                  ]
+                  ( Just
                     [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
-                    ] 
+                    ]
                   )
               , While (Lt (Expr (Var "y")) (Expr (Const 5)))
                   [ Assignment (Absolute "y" (Add (Var "y") (Const 1)))
@@ -474,6 +475,12 @@ main = hspec $ do
       output <- runFile "printBool"
       lines output `shouldBe` expectedLines
 
+    it "prints Hello World!" $ do
+      let expectedLines = [ "Sprockell 0 says Hello World!"
+                          ]
+      output <- runFile "printHelloWorld"
+      lines output `shouldBe` expectedLines
+
     it "prints nested variables" $ do
       let expectedLines = [ "Sprockell 0 says 10"
                           , "Sprockell 0 says W"
@@ -493,12 +500,6 @@ main = hspec $ do
     it "prints squared area of a triangle" $ do
       let expectedLines = [ "Sprockell 0 says 216" ]
       output <- runFile "areaTriangle"
-      lines output `shouldBe` expectedLines
-
-    it "prints Hello World!" $ do
-      let expectedLines = [ "Sprockell 0 says Hello World!"
-                          ]
-      output <- runFile "printHelloWorld"
       lines output `shouldBe` expectedLines
 
     it "swaps two variables" $ do
@@ -613,6 +614,23 @@ main = hspec $ do
       output <- runFile "checkIfWhile"
       lines output `shouldBe` expectedLines
 
+    it "tests signed division (a/b; -a/b; a/-b; -a/-b; 0/b; a/b)" $ do
+      let expectedLines = [ "Sprockell 0 says Integer division of 10 by 3:"
+                          , "Sprockell 0 says 3"
+                          , "Sprockell 0 says Integer division of -19 by 4:"
+                          , "Sprockell 0 says -4"
+                          , "Sprockell 0 says Integer division of 21 by -4:"
+                          , "Sprockell 0 says -5"
+                          , "Sprockell 0 says Integer division of -23 by -5:"
+                          , "Sprockell 0 says 4"
+                          , "Sprockell 0 says Division of 8 by zero:"
+                          , "Sprockell 0 says 0"
+                          , "Sprockell 0 says Division of zero by 5:"
+                          , "Sprockell 0 says 0"
+                          ]
+      output <- runFile "testDivision"
+      lines output `shouldBe` expectedLines
+
     -- this test takes more than others (around 1.5 sec) because of division of big numbers (1000000 / 3)
     it "tests arithmetic operations (extensive)" $ do
       let expectedLines = [ "Sprockell 0 says 3"
@@ -640,7 +658,28 @@ main = hspec $ do
                           ]
       output <- runFile "testArithmetic"
       lines output `shouldBe` expectedLines
-    
+
+    it "tests variable shadowing" $ do
+      let expectedLines = [ "Sprockell 0 says 10"
+                          , "Sprockell 1 says false"
+                          , "Sprockell 2 says 20"
+                          , "Sprockell 2 says a"
+                          , "Sprockell 2 says 30"
+                          , "Sprockell 2 says possible"
+                          , "Sprockell 2 says z"
+                          , "Sprockell 3 says 50"
+                          , "Sprockell 3 says W"
+                          ]
+      output <- runFile "testVarShadowing"
+      lines output `shouldBe` expectedLines
+
+    it "tests fib(15) and fib(30)" $ do
+      let expectedLines = [ "Sprockell 0 says 610"
+                          , "Sprockell 0 says 832040"
+                          ]
+      output <- runFile "fib"
+      lines output `shouldBe` expectedLines
+
     it "tests threads and locks" $ do
       let expectedLines = [ "Sprockell 1 says Thread 1 x"
                           , "Sprockell 1 says 1"
@@ -664,21 +703,30 @@ main = hspec $ do
       output <- runFile "testThreads"
       lines output `shouldBe` expectedLines
 
-    it "tests variable shadowing" $ do
-      let expectedLines = [ "Sprockell 0 says 10"
-                          , "Sprockell 1 says false"
-                          , "Sprockell 2 says 20"
-                          , "Sprockell 2 says a"
-                          , "Sprockell 2 says 30"
-                          , "Sprockell 2 says possible"
-                          , "Sprockell 2 says z"
-                          , "Sprockell 3 says 50"
-                          , "Sprockell 3 says W"
+    it "tests multiple (4) locks" $ do
+      output <- runFile "locks"
+      let lastValue = take 2 $ drop (length output - 3) output
+      lastValue `shouldBe` "25"
+
+    it "tests concurrency with Peterson's algorithm (for 2 threads)" $ do
+      output <- runFile "peterson"
+      -- evaluate the final value of the critical variable
+      let secondLastChar = output !! (length output - 2)
+      secondLastChar `shouldBe` '0'
+
+    it "tests concurrency with a banking system (main thread + 4 threads)" $ do
+      let expectedLines = [ "Sprockell 0 says Final balances:"  -- careful with space here
+                          , "Sprockell 0 says -5050"
+                          , "Sprockell 0 says 7050"
                           ]
-      output <- runFile "testVarShadowing"
-      lines output `shouldBe` expectedLines
+      output <- runFile "banking"
+      let ls = lines output
+      let last3 = drop (length ls - 3) ls
+      last3 `shouldBe` expectedLines
 
     -- NO IDEA WHY THESE TESTS ARE NOT DISPLAYED IN CONSOLE
+    -- THEY ALSO REMOVE ALL OUTPUT OF FOLLOWING TESTS 
+    -- they also remove the "Finished in n seconds" message
     -- it "tests infinite loops (while)" $ do
     --   output <- timeout (1 * 10^6) $ runFile "testInfiniteWhile"
     --   output `shouldBe` Nothing
@@ -687,17 +735,55 @@ main = hspec $ do
     --   output <- timeout (1 * 10^6) $ runFile "testInfLock"
     --   output `shouldBe` Nothing
 
+    it "fails to declare a variable with incorrect type" $ do
+        let program = "ints x;"
+        output <- runStr program
+        let res = "ParseError" `isPrefixOf` output
+        res `shouldBe` True
 
-{-
-it "swaps two variables" $ do
-      let expectedLines = [ "Sprockell 0 says 10"
-                          , "Sprockell 0 says 5"
-                          ]
-      output <- runFile "swapVars"
-      lines output `shouldBe` expectedLines
--}
+    it "fails to reference an undeclared variable in assignment" $ do
+        let program = "int x = y + 1;"
+        output <- runStr program
+        let res = "TypeError" `isPrefixOf` output
+        res `shouldBe` True
 
--- HELPER FUNCTIONS
+    it "fails to use correct operator" $ do
+        let program = "int x = 5 ** 2;"
+        output <- runStr program
+        let res = "ParseError" `isPrefixOf` output
+        res `shouldBe` True
+
+    it "fails to close braces properly" $ do
+        let program = "int x = { 5 + 2;"
+        output <- runStr program
+        let res = "ParseError" `isPrefixOf` output
+        res `shouldBe` True
+
+    it "fails to match types in assignment" $ do
+        let program = "char x = 99;"
+        output <- runStr program
+        let res = "TypeError" `isPrefixOf` output
+        res `shouldBe` True
+
+    -- it "fails to allocate more than 8 shared variables" $ do
+    --     let program =    "global int a1;"
+    --                   ++ "global int a2;"
+    --                   ++ "global int a3;"
+    --                   ++ "global int a4;"
+    --                   ++ "global int a5;"
+    --                   ++ "global int a6;"
+    --                   ++ "global int a7;"
+    --                   ++ "global int a8;"
+    --                   ++ "global int a9;"
+    --                   ++ "print(a9);"
+    --     output <- runStr program
+    --     let res = "CallStack" `isPrefixOf` output
+    --     res `shouldBe` True
+
+
+  ----------------------------------------------------------------------
+  --                         HELPER FUNCTIONS                         --
+  ----------------------------------------------------------------------
 
 -- path to programs directory
 programsDir :: FilePath
@@ -711,23 +797,33 @@ fileExt = ".txt"
 runFile :: FilePath -> IO String
 runFile path = catchOutput $ compile (programsDir ++ path ++ fileExt)
 
+-- runStr - compile string and catch output
+runStr :: String -> IO String
+runStr str = catchOutput $ evaluate str
+
 -- function to compile files
 compile :: FilePath -> IO ()
 compile filePath = do
-    input <- readFile filePath
-    let output = createAST input
-    case output of
-        -- error
-        Left  err -> do
-            print err
+  input <- readFile filePath
+  evaluate input
 
-        -- compile ast
-        Right ast -> do
-            let env = compileProgram ast
-            let threads = mainCode env : threadsCode env
-            -- putStrLn $ "Main Code: " ++ show (mainCode env)
-            -- putStrLn $ "Threads code: " ++ show (threadsCode env)
-            Sprockell.run threads
+-- function to evaluate input (parse, elaborate, gen code)
+evaluate :: String -> IO ()
+evaluate input = do
+  let output = createAST input
+  case output of
+      -- error
+      Left  err -> do
+          print err
+
+      -- compile ast
+      Right ast -> do
+          let env = compileProgram ast
+          let threads = mainCode env : threadsCode env
+          -- putStrLn $ "Main Code: " ++ show (mainCode env)
+          -- putStrLn $ "Threads code: " ++ show (threadsCode env)
+          Sprockell.run threads
+
 
 -- capture the output of an IO action that writes to "stdout"
 catchOutput :: IO () -> IO String

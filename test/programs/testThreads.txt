@@ -6,10 +6,11 @@
 global int x = 0;
 global int y = 5;
 Lock myLock;
-Lock l2;
+Lock barrier;
 
 // lock "barrier"
-l2.lock;
+// NOTE: THIS IS NOT AN REENTRANT LOCK!
+barrier.lock;
 
 // 5th shMem slot
 // First thread: increment x and y within a locked block
@@ -60,7 +61,7 @@ thread {
             print(y);
 
             // unlock "barrier"
-            l2.unlock;
+            barrier.unlock;
         }
     }
 }
@@ -70,8 +71,8 @@ thread {
 // l8.lock;
 
 
-// l2 works as a barrier / join of threads
-l2.lock;
+// barrier works as a barrier / join of threads
+barrier.lock;
 
 myLock.lock;
 
